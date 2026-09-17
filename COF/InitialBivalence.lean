@@ -7,69 +7,67 @@ namespace COF.SharedMemory.Algorithm
 variable {P R V S : Type*} [DecidableEq P] [DecidableEq R]
 variable (a : Algorithm P R V S)
 
-/-- The square of steps in the proof of Lemma `init_tobivalent`. -/
-theorem square_valency (ht : a.COFTermination) {input : P → Bool}
-    {active : Set P} {c : Config P R V S} {p q r : P} {v w : Bool}
-    (hr : a.Reachable input c) (hq : q ∈ active) (hobs : r ∈ active)
+/-- A *valency flip* at `d`: the configuration is `v`-valent, but one step of the excluded
+process `p` makes it `!v`-valent. Assuming every reachable configuration is univalent, a
+flip survives a step of the active process `q`.
+
+The critical square at `d` rules out `v` at `step (step d q) p` — otherwise `!v = v` —
+and univalence then leaves only `!v`. Note `p ∉ active` is permitted: `r` is the third
+process, which observes on `p`'s behalf. -/
+theorem flip_step (ht : a.COFTermination) {input : P → Bool} {active : Set P}
+    {p q r : P} (hq : q ∈ active) (hobs : r ∈ active)
     (hpq : p ≠ q) (hrp : r ≠ p) (hrq : r ≠ q)
-    (hv : a.Valent active (a.step c p) v)
-    (hw : a.Valent active (a.step c q) w)
-    (hwp : a.Valent active (a.step (a.step c q) p) w) : v = w := by
-  have hvq := a.valent_mono hv (Reach.single a _ hq)
-  rcases a.commutation_or_erasure c hpq with he | he | he
-  · exact a.indist_valent_eq ht (a.reachable_step (a.reachable_step hr p) q) hobs
-      ⟨congrArg Config.memory he, fun r _ => congrArg (fun c => c.proc r) he⟩ hvq hwp
-  · exact a.indist_valent_eq ht (a.reachable_step (a.reachable_step hr p) q) hobs
-      (he.restrict (by simpa using hrp)) hvq hw
-  · exact (a.indist_valent_eq ht (a.reachable_step (a.reachable_step hr q) p) hobs
-      (he.restrict (by simpa using hrq)) hwp hv).symm
+    (hall : ∀ c, a.Reachable input c → a.Univalent active c)
+    {d : Config P R V S} {v : Bool} (hdr : a.Reachable input d)
+    (hdv : a.Valent active d v) (hflip : a.Valent active (a.step d p) (!v)) :
+    a.Valent active (a.step d q) v ∧ a.Valent active (a.step (a.step d q) p) (!v) := by
+  have hnext := a.valent_mono hdv (Reach.single a _ hq)
+  refine ⟨hnext, ?_⟩
+  have hn : ¬ a.Valent active (a.step (a.step d q) p) v := by
+    intro hn
+    have he := a.valent_eq_of_square ht hdr hpq hobs hobs hrp hrq
+      hflip (a.valent_mono hflip (Reach.single a _ hq)) hnext hn
+    cases v <;> cases he
+  exact a.valent_of_univalent (hall _ (a.reachable_step (a.reachable_step hdr q) p))
+    (by simpa using hn)
 
 /-- If all reachable configurations were univalent, an excluded process's step
-could not change valency. -/
+could not change valency.
+
+Were there a flip, `flip_step` would carry it along the whole solo run in which `q`
+decides. That decision is `v`, by the valency of the starting configuration, so `p`'s
+successor there has `v` decided and cannot be `!v`-valent. -/
 theorem external_step_preserves_valency (ht : a.COFTermination) {input : P → Bool}
     {active : Set P} {p q r : P} (hq : q ∈ active) (hobs : r ∈ active)
     (hpq : p ≠ q) (hrp : r ≠ p) (hrq : r ≠ q)
     (hall : ∀ c, a.Reachable input c → a.Univalent active c)
     {c : Config P R V S} {v : Bool} (hr : a.Reachable input c)
     (hv : a.Valent active c v) : a.Valent active (a.step c p) v := by
-  have noflip : ¬ a.Valent active (a.step c p) (!v) := by
-    intro hflip
-    obtain ⟨ps, hps, b, hb⟩ := a.solo_terminates ht hr q
-    have hreach : a.Reach active c (a.run c ps) :=
-      ⟨ps, fun t ht => (hps t ht) ▸ hq, rfl⟩
-    have hvb := a.valent_decision hv hreach ⟨q, hb⟩
-    subst b
-    have propagate : ∀ (xs : List P), (∀ t ∈ xs, t = q) →
-        ∀ (d : Config P R V S), a.Reachable input d → a.Valent active d v →
-        a.Valent active (a.step d p) (!v) →
-        a.Valent active (a.step (a.run d xs) p) (!v) := by
-      intro xs hxs
-      induction xs with
-      | nil => intro d _ _ hh; exact hh
-      | cons t xs ih =>
-        have htq := hxs t (by simp)
-        subst t
-        intro d hd hdv hdflip
-        have hnext := a.valent_mono hdv (Reach.single a _ hq)
-        have hn : ¬ a.Valent active (a.step (a.step d q) p) v := by
-          intro hn
-          have he := a.square_valency ht hd hq hobs hpq hrp hrq hdflip hnext hn
-          cases v <;> cases he
-        have hnflip : a.Valent active (a.step (a.step d q) p) (!v) := by
-          have hu := hall _ (a.reachable_step (a.reachable_step hd q) p)
-          cases v <;> simp_all only [Univalent, Bool.not_true, Bool.not_false, false_or,
-            or_false]
-        exact ih (fun t ht => hxs t (by simp [ht])) (a.step d q)
-          (a.reachable_step hd q) hnext hnflip
-    have hfinal := propagate ps hps c hr hv hflip
-    have hb' := a.step_decision (a.run c ps) p q v hb
-    exact hfinal ⟨a.step (a.run c ps) p, Reach.refl a _ _, by simpa using
-      (show (a.step (a.run c ps) p).Decided v from ⟨q, hb'⟩)⟩
-  have hu := hall _ (a.reachable_step hr p)
-  cases v <;> simp_all only [Univalent, Bool.not_true, Bool.not_false, false_or, or_false]
+  refine a.valent_of_univalent (hall _ (a.reachable_step hr p)) ?_
+  intro hflip
+  obtain ⟨ps, hps, b, hb⟩ := a.solo_terminates ht hr q
+  have hreach : a.Reach active c (a.run c ps) :=
+    ⟨ps, fun t ht => (hps t ht) ▸ hq, rfl⟩
+  obtain rfl := a.valent_decision hv hreach ⟨q, hb⟩
+  have hfinal := a.run_induction
+    (Motive := fun d => a.Valent active d v ∧ a.Valent active (a.step d p) (!v))
+    (allowed := fun t => t = q)
+    (fun d t htq hdr hpair => by
+      subst htq
+      exact a.flip_step ht hq hobs hpq hrp hrq hall hdr hpair.1 hpair.2)
+    ps c hr ⟨hv, hflip⟩ hps
+  refine hfinal.2 ⟨a.step (a.run c ps) p, Reach.refl a _ _, ?_⟩
+  simpa using (show (a.step (a.run c ps) p).Decided v from
+    ⟨q, a.step_decision (a.run c ps) p q v hb⟩)
 
 /-- Paper Lemma `init_tobivalent`, generalized to any process type containing three
-distinct processes. Processes other than these three need never be scheduled. -/
+distinct processes. Processes other than these three need never be scheduled.
+
+The input vector has `p₀` proposing `false` and everyone else `true`. Suppose no reachable
+configuration were bivalent for `{p₁, p₂}`. The initial configuration is `true`-valent for
+them, since that is all they propose, while `p₀` running solo must decide — and can only
+decide `false`. Yet `external_step_preserves_valency` says none of `p₀`'s steps can move
+the `true`-valency seen by `p₁` and `p₂`, so `false` was never decidable: contradiction. -/
 theorem reachable_bivalent (hs : a.Safe) (ht : a.COFTermination)
     (p₀ p₁ p₂ : P) (h₀₁ : p₀ ≠ p₁) (h₂₀ : p₂ ≠ p₀) (h₂₁ : p₂ ≠ p₁) :
     let input : P → Bool := fun p => if p = p₀ then false else true
@@ -84,33 +82,28 @@ theorem reachable_bivalent (hs : a.Safe) (ht : a.COFTermination)
     by_contra hu
     exact hn ⟨c, hc, hu⟩
   have hi : a.Reachable input (a.initial input) := Reach.refl a _ _
+  -- `p₁` and `p₂` both propose `true`, so nothing they do alone can decide `false`.
   have hiv : a.Valent {p₁, p₂} (a.initial input) true := by
     apply a.initial_valent hs
     intro p hp
     rcases (show p = p₁ ∨ p = p₂ by simpa using hp) with rfl | rfl
     · simp [input, h₀₁.symm]
     · simp [input, h₂₀]
+  -- `p₀` running solo decides, and by its own valency it decides `false`.
   obtain ⟨ps, hps, b, hb⟩ := a.solo_terminates ht hi p₀
   have hiv0 : a.Valent {p₀} (a.initial input) false := by
     apply a.initial_valent hs
     simp [input]
-  have hb0 := a.valent_decision hiv0
-    ⟨ps, by simpa using hps, rfl⟩ (show (a.run (a.initial input) ps).Decided b from ⟨p₀, hb⟩)
-  subst b
-  have preserve : ∀ (xs : List P), (∀ p ∈ xs, p = p₀) →
-      ∀ c, a.Reachable input c → a.Valent {p₁, p₂} c true →
-      a.Valent {p₁, p₂} (a.run c xs) true := by
-    intro xs hxs
-    induction xs with
-    | nil => intro c _ hv; exact hv
-    | cons p xs ih =>
-      have hp := hxs p (by simp)
-      subst p
-      intro c hc hv
-      exact ih (fun p hp => hxs p (by simp [hp])) _ (a.reachable_step hc p₀)
-        (a.external_step_preserves_valency ht (q := p₁) (r := p₂)
-          (by simp) (by simp) h₀₁ h₂₀ h₂₁ hall hc hv)
-  exact preserve ps hps _ hi hiv
-    ⟨a.run (a.initial input) ps, Reach.refl a _ _, p₀, hb⟩
+  obtain rfl := a.valent_decision hiv0 ⟨ps, by simpa using hps, rfl⟩
+    (show (a.run (a.initial input) ps).Decided b from ⟨p₀, hb⟩)
+  -- But no step of `p₀` disturbs the `true`-valency seen by `p₁` and `p₂`.
+  have preserve := a.run_induction
+    (Motive := fun c => a.Valent {p₁, p₂} c true) (allowed := fun t => t = p₀)
+    (fun c t htp₀ hc hv => by
+      subst htp₀
+      exact a.external_step_preserves_valency ht (q := p₁) (r := p₂) (by simp) (by simp)
+        h₀₁ h₂₀ h₂₁ hall hc hv)
+    ps
+  exact preserve _ hi hiv hps ⟨a.run (a.initial input) ps, Reach.refl a _ _, p₀, hb⟩
 
 end COF.SharedMemory.Algorithm

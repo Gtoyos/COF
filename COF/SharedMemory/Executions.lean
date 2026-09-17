@@ -41,6 +41,9 @@ omit [DecidableEq P] in
   | nil => simp [prepend]
   | cons p ps ih => simpa [prepend, Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using ih
 
+/-- Running a finite prefix and then an infinite schedule is the same as running the
+combined infinite schedule. This is what makes termination from a reachable configuration
+a statement about executions from the initial configuration. -/
 theorem execution_prepend (c : Config P R V S) (ps : List P) (schedule : ℕ → P) (n : ℕ) :
     a.execution c (prepend ps schedule) (ps.length + n) = a.execution (a.run c ps) schedule n := by
   induction ps generalizing c with

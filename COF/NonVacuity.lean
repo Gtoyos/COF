@@ -38,6 +38,7 @@ def Inv (input : Unit → Bool) (d : Config Unit Unit Unit Bool) : Prop :=
   ∀ r, (d.proc r).state = input r ∧
     ((d.proc r).decision = none ∨ (d.proc r).decision = some (input r))
 
+/-- The invariant survives one step. -/
 theorem solo_step_inv {input : Unit → Bool} {d : Config Unit Unit Unit Bool}
     (h : Inv input d) (t : Unit) : Inv input (solo.step d t) := by
   intro r
@@ -46,17 +47,21 @@ theorem solo_step_inv {input : Unit → Bool} {d : Config Unit Unit Unit Bool}
   rcases hdec with hn | hn <;>
     simp [Algorithm.step, solo, Function.update, hs, hn]
 
+/-- The invariant survives a finite schedule. -/
 theorem solo_run_inv {input : Unit → Bool} :
     ∀ (ps : List Unit) {d : Config Unit Unit Unit Bool}, Inv input d →
       Inv input (solo.run d ps)
   | [], _, h => h
   | t :: ts, _, h => solo_run_inv ts (solo_step_inv h t)
 
+/-- Hence the invariant holds at every reachable configuration. -/
 theorem solo_inv {input : Unit → Bool} {c : Config Unit Unit Unit Bool}
     (h : solo.Reachable input c) : Inv input c := by
   obtain ⟨ps, -, rfl⟩ := h
   exact solo_run_inv ps (fun r => ⟨rfl, Or.inl rfl⟩)
 
+/-- Agreement and validity hold: the only value ever decided is the lone process's own
+input. -/
 theorem solo_safe : solo.Safe := by
   intro input c hr
   have hinv := solo_inv hr
@@ -69,6 +74,7 @@ theorem solo_safe : solo.Safe := by
   exact ⟨fun v w hv hw => (hdec v hv).trans (hdec w hw).symm,
     fun v hv => ⟨(), (hdec v hv).symm⟩⟩
 
+/-- Liveness holds: any process scheduled at all decides at its very next step. -/
 theorem solo_termination : solo.COFTermination := by
   intro input c _ schedule _ p hinf
   obtain ⟨k, -, hk⟩ := hinf 0

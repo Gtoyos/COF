@@ -12,19 +12,23 @@ namespace COF
 namespace Object
 variable {Q P : Type*}
 
-/-- Responses of a sequential ordering of single-shot invocations. -/
+/-- The responses produced by applying the invocations of `ps`, in that order, starting
+from state `s`. Each process invokes the operation given by its own input. -/
 def responses (obj : Object Q Bool Bool) (input : P → Bool) : Q → List P → List (P × Bool)
   | _, [] => []
   | s, p :: ps =>
     let result := obj.transition (input p) s
     (p, result.1) :: obj.responses input result.2 ps
 
+/-- Once consensus holds a value, every later proposal is answered with it. -/
 theorem consensus_responses_decided (input : P → Bool) (b : Bool) (ps : List P) :
     consensusObject.responses input (some b) ps = ps.map (fun p => (p, b)) := by
   induction ps with
   | nil => rfl
   | cons p ps ih => simpa [responses, consensusObject] using congrArg (List.cons (p, b)) ih
 
+/-- In any sequential ordering of proposals, every response is the input of whichever
+process was ordered first. This is what makes a linearization enforce agreement. -/
 theorem consensus_responses_initial (input : P → Bool) (p : P) (ps : List P) :
     consensusObject.responses input none (p :: ps) =
       (p :: ps).map (fun q => (q, input p)) := by
@@ -53,7 +57,10 @@ def ObjectCOF (obj : Object Q Bool Bool) : Prop :=
     (∃ N, ∀ k ≥ N, schedule k ≠ p → ¬ obj.Conflict (input p) (input (schedule k))) →
     ∃ n v, ((a.execution c schedule n).proc p).decision = some v
 
-/-- Linearizability of the consensus object implies agreement and validity. -/
+/-- Linearizing the consensus object implies consensus safety. Every decision in a
+configuration must appear in the one sequential ordering that explains it; by
+`consensus_responses_initial` all responses in that ordering are the first-ordered
+process's input, which gives both agreement and validity at once. -/
 theorem safe_of_consensus_linearizes (h : a.Linearizes consensusObject) : a.Safe := by
   intro input c hr
   obtain ⟨ps, _, hps⟩ := h input c hr
@@ -73,8 +80,9 @@ theorem safe_of_consensus_linearizes (h : a.Linearizes consensusObject) : a.Safe
     exact ⟨fun v w hv hw => (hall v hv).trans (hall w hw).symm,
       fun v hv => ⟨q, (hall v hv).symm⟩⟩
 
-/-- The conflict relation computed from the object yields the paper's consensus
-termination clause under eventually homogeneous schedules. -/
+/-- Object-level COF for consensus yields the consensus liveness clause. An eventually
+homogeneous schedule is precisely one that is eventually conflict-free for every process
+still stepping, since consensus proposals conflict exactly when they differ. -/
 theorem termination_of_consensus_objectCOF (h : a.ObjectCOF consensusObject) :
     a.COFTermination := by
   intro input c hr schedule hhom p hinf
@@ -97,12 +105,15 @@ def BinaryUniversal (P : Type) [DecidableEq P] : Prop :=
     ∃ (R V S : Type) (_ : DecidableEq R) (a : SharedMemory.Algorithm P R V S),
       a.Linearizes obj ∧ a.ObjectCOF obj
 
-/-- Paper Corollary `cor:no_cof_univ`, for the necessary fragment above. -/
+/-- Paper Corollary `cor:no_cof_univ`, for the necessary fragment above: instantiate the
+construction at the consensus object and it becomes a COF consensus algorithm, which
+cannot exist. -/
 theorem no_binaryUniversal {P : Type} [DecidableEq P] (p₀ p₁ p₂ : P)
     (h₀₁ : p₀ ≠ p₁) (h₂₀ : p₂ ≠ p₀) (h₂₁ : p₂ ≠ p₁) : ¬ BinaryUniversal P := by
   intro h
   obtain ⟨R, V, S, inst, a, hs, ht⟩ := h (Option Bool) consensusObject
-  let := inst
+  -- Register the existentially bound decidability instance for the algorithm's registers.
+  let _ : DecidableEq R := inst
   exact a.no_cof_consensus p₀ p₁ p₂ h₀₁ h₂₀ h₂₁
     ⟨a.safe_of_consensus_linearizes hs, a.termination_of_consensus_objectCOF ht⟩
 

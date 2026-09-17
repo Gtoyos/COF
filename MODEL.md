@@ -16,18 +16,18 @@ regression fails CI rather than passing with a warning.
 
 | Lean result | Paper |
 |---|---|
-| `SharedMemory.Algorithm.no_cof_consensus` (`COF/Impossibility.lean:65`) | Theorem `th:no_quasi_cons` — no COF consensus for ≥ 3 processes |
-| `SharedMemory.Algorithm.no_cof_consensus_fin` (`COF/Impossibility.lean:73`) | same, for `Fin n` with `3 ≤ n` |
-| `no_binaryUniversal` (`COF/Universal.lean:101`) | Corollary `cor:no_cof_univ` — no COF universal construction |
-| `SharedMemory.Algorithm.no_linearizable_cof` (`COF/TraceBridge.lean:47`) | the same impossibility, stated against the paper's own trace-level COF definition |
+| `SharedMemory.Algorithm.no_cof_consensus` (`COF/Impossibility.lean:85`) | Theorem `th:no_quasi_cons` — no COF consensus for ≥ 3 processes |
+| `SharedMemory.Algorithm.no_cof_consensus_fin` (`COF/Impossibility.lean:93`) | same, for `Fin n` with `3 ≤ n` |
+| `no_binaryUniversal` (`COF/Universal.lean:111`) | Corollary `cor:no_cof_univ` — no COF universal construction |
+| `SharedMemory.Algorithm.no_linearizable_cof` (`COF/TraceBridge.lean:51`) | the same impossibility, stated against the paper's own trace-level COF definition |
 
 Supporting lemmas map one-to-one onto the paper's:
 
 | Lean | Paper |
 |---|---|
-| `initial_valent` (`COF/Valency.lean:80`) | Lemma `init_config_1valent` |
-| `reachable_bivalent` (`COF/InitialBivalence.lean:73`) | Lemma `init_tobivalent` |
-| `bivalent_successor` (`COF/Bivalence.lean:47`) | Lemma `bivalent_to_bivalent` |
+| `initial_valent` (`COF/Valency.lean:115`) | Lemma `init_config_1valent` |
+| `reachable_bivalent` (`COF/InitialBivalence.lean:71`) | Lemma `init_tobivalent` |
+| `bivalent_successor` (`COF/Bivalence.lean:83`) | Lemma `bivalent_to_bivalent` |
 | `cof_iff_obstructionFree_of_full` (`COF/Progress.lean`) | §3, first lemma (`≍ = O × O` ⟹ COF = OF) |
 | `cof_iff_waitFree_of_empty` (`COF/Progress.lean`) | §3, second lemma (`≍ = ∅` ⟹ COF = WF) |
 
@@ -52,7 +52,7 @@ constraints on any of them:
 `DecidableEq P` and `DecidableEq R`, which is not a restriction: any type admits
 such an instance classically, and it is used purely so `Function.update` computes.
 
-### An algorithm (`Algorithm`, line 26)
+### An algorithm (`Algorithm`, line 34)
 
 ```lean
 structure Algorithm (P R V S : Type*) where
@@ -69,7 +69,7 @@ structure Algorithm (P R V S : Type*) where
 - **Full generality otherwise.** `S` is arbitrary, so a process may remember
   its entire history; `R` is arbitrary, so there are arbitrarily many registers.
 
-### A step (`Instruction` line 17, `step` line 41)
+### A step (`Instruction` line 21, `step` line 55)
 
 ```lean
 inductive Instruction (R V S : Type*) where
@@ -86,10 +86,10 @@ The asymmetry is the crux of the whole proof and is deliberate: a **read**
 continuation receives the value read (`V → Local S`); a **write** continuation
 receives nothing from memory (`Local S`). This is what makes atomic registers
 atomic registers. The model would be unsound for read-modify-write primitives
-such as compare-and-swap, and `COF/SharedMemory/Commutation.lean:8` says so
+such as compare-and-swap, and `COF/SharedMemory/Commutation.lean:19` says so
 explicitly.
 
-### Local state and decisions (`Local`, line 11)
+### Local state and decisions (`Local`, line 13)
 
 ```lean
 structure Local (S : Type*) where
@@ -109,11 +109,11 @@ decided — and it avoids having to model halting.
 
 ### Configurations, schedules, crashes
 
-- `Config` (line 22) = shared memory (`R → V`) together with every process's
+- `Config` (line 28) = shared memory (`R → V`) together with every process's
   local state (`P → Local S`). *(Paper: "A configuration represents a complete
   system state, that is, the local states of all processes together with the
   state of the shared memory.")*
-- `run` (line 51) executes a finite schedule (`List P`); `execution` (line 157)
+- `run` (line 65) executes a finite schedule (`List P`); `execution` (line 209)
   executes an infinite one (`ℕ → P`).
 - **The scheduler is arbitrary.** A schedule is any function `ℕ → P`. No
   fairness, no bound on relative speeds, no timing assumptions. *(Paper: "There
@@ -121,16 +121,16 @@ decided — and it avoids having to model halting.
   timing or scheduling fairness.")*
 - **A crash is simply never being scheduled again.** Any number of processes may
   crash, at any point. There is no failure detector and no bound on failures.
-- `Reach active c d` (line 66) — `d` is reachable from `c` scheduling only
-  processes in `active`. `Reachable input c` (line 69) = reachable from the
+- `Reach active c d` (line 81) — `d` is reachable from `c` scheduling only
+  processes in `active`. `Reachable input c` (line 86) = reachable from the
   initial configuration for `input`, with no restriction on who takes steps.
-- `Indist observers c d` (line 121) — equal shared memory, and equal local state
+- `Indist observers c d` (line 162) — equal shared memory, and equal local state
   for every process in `observers`. This is the indistinguishability relation
   used throughout.
 
 ### The read/write case analysis
 
-`commutation_or_erasure` (`COF/SharedMemory/Commutation.lean:11`) is the one
+`commutation_or_erasure` (`COF/SharedMemory/Commutation.lean:22`) is the one
 place where "atomic read-write register" does real work. For `p ≠ q`, either
 
 1. the two steps commute outright, or
@@ -138,10 +138,12 @@ place where "atomic read-write register" does real work. For `p ≠ q`, either
    everyone **except `p`**, or
 3. symmetrically with `p` and `q` exchanged.
 
-Cases 2 and 3 are the overwrite cases (write/write on the same register, and
-write-after-read). Because the erased-step process is excluded from the
-observers, an argument that needs an observer requires a *third* process — which
-is precisely why the impossibility needs three processes and not two.
+Cases 2 and 3 are the erasure cases: a step of `p` leaves no trace for anyone
+else either because it was a read (reads do not touch memory) or because it was
+a write that `q` immediately overwrote. Because the erased-step process is
+excluded from the observers, an argument that needs an observer requires a
+*third* process — which is precisely why the impossibility needs three processes
+and not two.
 
 ---
 
@@ -150,18 +152,18 @@ is precisely why the impossibility needs three processes and not two.
 `COF/Objects.lean`. A sequential object is `(State, Operation, Response)` with
 an initial state and a transition function — the paper's `(Q, q₀, O, R, σ)`.
 
-`CommuteAt a b s` (line 15) requires **both** that the final state agrees and
+`CommuteAt a b s` (line 18) requires **both** that the final state agrees and
 that each operation returns the same response in either order. `Conflict a b`
-(line 22) is `∃ s, ¬ CommuteAt a b s`: quantified over *all* object states, not
+(line 27) is `∃ s, ¬ CommuteAt a b s`: quantified over *all* object states, not
 just reachable ones.
 
 > Paper: "we say that they *commute* in a state `q` if `o·o'(q) = o'·o(q)` and
 > each operation returns the same result in both sequences"; "`o ≍ o'` if there
 > **exists** a state `q` in which `o` and `o'` do not commute."
 
-`consensusObject` (line 35) is binary consensus: state `Option Bool` with `none`
+`consensusObject` (line 41) is binary consensus: state `Option Bool` with `none`
 undecided, the first proposal wins, later proposals return the stored value.
-`consensus_conflict_iff` (line 50) proves the paper's claim that
+`consensus_conflict_iff` (line 60) proves the paper's claim that
 `propose(v) ≍ propose(w) ↔ v ≠ w`.
 
 ---
@@ -178,11 +180,11 @@ invocations do not count as contention.** This matches the paper's "`Φ` takes a
 step when the process `p` that invoked `Φ` takes a step *and `Φ` has not yet
 returned a response*".
 
-- `EventuallyConflictFree` (line 20) — `Φ` completes, or some suffix contains no
+- `EventuallyConflictFree` (line 29) — `Φ` completes, or some suffix contains no
   step of a *conflicting* other instance.
-- `ConflictObstructionFree` (line 54) — every invoked instance of a correct
+- `ConflictObstructionFree` (line 71) — every invoked instance of a correct
   process that is eventually conflict-free completes.
-- `ObstructionFree` (line 58), `WaitFree` (line 61) — the standard conditions.
+- `ObstructionFree` (line 76), `WaitFree` (line 80) — the standard conditions.
 
 The two sanity lemmas from §3 are proved: conflict relation `= O × O` collapses
 COF to OF; empty conflict relation collapses COF to wait-freedom.
@@ -193,7 +195,7 @@ COF to OF; empty conflict relation collapses COF to wait-freedom.
 
 `COF/Valency.lean` and `COF/Termination.lean`. `Consensus := Safe ∧ COFTermination`.
 
-### Safety (`Safe`, `COF/Valency.lean:20`)
+### Safety (`Safe`, `COF/Valency.lean:23`)
 
 For every input vector and every reachable configuration:
 
@@ -202,7 +204,7 @@ For every input vector and every reachable configuration:
 
 `c.Decided v` means *some* process has decided `v`.
 
-### Liveness (`COFTermination`, `COF/Termination.lean:12`)
+### Liveness (`COFTermination`, `COF/Termination.lean:19`)
 
 > Paper: "**COF termination:** If eventually only processes that proposed the
 > same value take steps, then every correct process decides in finitely many
@@ -223,12 +225,12 @@ Two modelling choices worth stating:
 - **Quantifying over reachable `c` adds nothing.** One might worry that
   requiring termination from every reachable configuration is stronger than the
   paper's "every execution has a conflict-free suffix ⟹ termination".
-  `cofTermination_iff_initial` (`COF/Termination.lean:28`) proves the two forms
+  `cofTermination_iff_initial` (`COF/Termination.lean:39`) proves the two forms
   equivalent, by prepending the finite prefix to the infinite schedule.
 
 ### Valency
 
-`Valent active c v := ¬ CanDecide active c (!v)` (`COF/Valency.lean:29`) — the
+`Valent active c v := ¬ CanDecide active c (!v)` (`COF/Valency.lean:40`) — the
 paper's *negative* notion ("the initial configuration with input vector (0,1,1)
 is 1-valent" = no execution from it decides 0), restricted to continuations that
 schedule only `active`.
@@ -238,7 +240,7 @@ decided is both 0-valent and 1-valent. That is intentional and is handled
 correctly: `Bivalent` is positively characterised by `bivalent_iff` as "both
 values are still decidable", and every step that needs valencies to be exclusive
 goes through `solo_terminates`, which uses `COFTermination` to produce an actual
-decision. `not_both_valent` (`COF/Valency.lean:72`) records the side condition.
+decision. `not_both_valent` (`COF/Valency.lean:102`) records the side condition.
 
 ---
 
@@ -248,14 +250,14 @@ decision. `not_both_valent` (`COF/Valency.lean:72`) records the side condition.
 necessary fragments of the real conditions, so refuting them refutes the real
 thing.
 
-- `Linearizes obj` (line 43) — from every reachable configuration there is a
+- `Linearizes obj` (line 47) — from every reachable configuration there is a
   single duplicate-free sequential order of invocations whose responses account
   for *every* decision in that configuration. One order is shared by all
   decisions, not chosen per decision. This is implied by, and much weaker than,
   full linearizability.
-- `ObjectCOF obj` (line 50) — per-process conflict-free termination, restricted
+- `ObjectCOF obj` (line 54) — per-process conflict-free termination, restricted
   to single-shot executions.
-- `BinaryUniversal P` (line 95) — for *every* binary object there exist register,
+- `BinaryUniversal P` (line 103) — for *every* binary object there exist register,
   value and state types and an algorithm satisfying the two fragments above.
 
 `safe_of_consensus_linearizes` derives agreement and validity from
@@ -308,7 +310,7 @@ careful proof). None weakens it.
    The paper's proof of `th:no_quasi_cons` says "both `p₁` and `p₂` are required
    to complete their operations". The schedule built by the bivalence argument
    need not schedule both infinitely often — it may starve one. The Lean proof
-   uses `two_process_infinite` (`COF/Impossibility.lean:12`) to extract whichever
+   uses `two_process_infinite` (`COF/Impossibility.lean:16`) to extract whichever
    of the two *is* scheduled infinitely often, and derives the contradiction from
    that one alone. This closes a small gap in the written proof.
 

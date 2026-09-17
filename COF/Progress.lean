@@ -6,30 +6,44 @@ to pending invocations; `none` is an idle step. Implementation-specific trace va
 supplied as a predicate, independently of the definitions below. -/
 namespace COF
 
+/-- An execution seen as a sequence of steps of operation instances. -/
 structure Trace (Instance Operation : Type*) where
+  /-- Which operation each instance invokes. -/
   operation : Instance → Operation
+  /-- The instance was invoked at all. -/
   invoked : Instance → Prop
+  /-- The invoking process is correct: it takes infinitely many steps, or has no pending
+  operation. -/
   correct : Instance → Prop
+  /-- The instance returned a response. -/
   completed : Instance → Prop
+  /-- The instance that takes step `k`, if any. `none` is an idle step: a step of an
+  already-completed invocation does not count as contention. -/
   step : ℕ → Option Instance
 
 namespace Trace
 variable {I O : Type*}
 
-/-- Single-object version of eventual conflict-step-contention freedom. -/
+/-- Single-object version of eventual conflict-step-contention freedom: `i` completes, or
+some suffix of the trace contains no step of an instance conflicting with `i`. -/
 def EventuallyConflictFree (t : Trace I O) (conflict : O → O → Prop) (i : I) : Prop :=
   t.completed i ∨ ∃ N, ∀ k ≥ N, ∀ j, t.step k = some j → j ≠ i →
     ¬ conflict (t.operation i) (t.operation j)
 
+/-- `i` completes, or some suffix of the trace contains only steps of `i`. -/
 def EventuallySolo (t : Trace I O) (i : I) : Prop :=
   t.completed i ∨ ∃ N, ∀ k ≥ N, ∀ j, t.step k = some j → j = i
 
+/-- Running solo is conflict-free for any conflict relation: there are no other steps to
+conflict with. -/
 theorem eventuallyConflictFree_of_solo (t : Trace I O) (conflict : O → O → Prop)
     {i : I} (h : t.EventuallySolo i) : t.EventuallyConflictFree conflict i := by
   rcases h with h | ⟨N, h⟩
   · exact Or.inl h
   · exact Or.inr ⟨N, fun k hk j hj hji => (hji (h k hk j hj)).elim⟩
 
+/-- When everything conflicts, being eventually conflict-free is exactly being eventually
+solo. -/
 theorem eventuallyConflictFree_iff_solo (t : Trace I O)
     {conflict : O → O → Prop} (hfull : ∀ a b, conflict a b) (i : I) :
     t.EventuallyConflictFree conflict i ↔ t.EventuallySolo i := by
@@ -42,6 +56,7 @@ theorem eventuallyConflictFree_iff_solo (t : Trace I O)
       exact h k hk j hj hne (hfull _ _)
   · exact t.eventuallyConflictFree_of_solo conflict
 
+/-- When nothing conflicts, every instance is trivially eventually conflict-free. -/
 theorem eventuallyConflictFree_of_empty (t : Trace I O)
     {conflict : O → O → Prop} (hempty : ∀ a b, ¬ conflict a b) (i : I) :
     t.EventuallyConflictFree conflict i :=
@@ -51,27 +66,34 @@ end Trace
 
 variable {I O : Type*}
 
+/-- Conflict-obstruction freedom: every invoked instance of a correct process that is
+eventually conflict-free completes. -/
 def ConflictObstructionFree (valid : Trace I O → Prop) (conflict : O → O → Prop) : Prop :=
   ∀ t, valid t → ∀ i, t.invoked i → t.correct i →
     t.EventuallyConflictFree conflict i → t.completed i
 
+/-- Obstruction freedom: completion is only owed to instances that eventually run solo. -/
 def ObstructionFree (valid : Trace I O → Prop) : Prop :=
   ∀ t, valid t → ∀ i, t.invoked i → t.correct i → t.EventuallySolo i → t.completed i
 
+/-- Wait freedom: completion is owed unconditionally. -/
 def WaitFree (valid : Trace I O → Prop) : Prop :=
   ∀ t, valid t → ∀ i, t.invoked i → t.correct i → t.completed i
 
+/-- COF sits below wait freedom: it demands completion under strictly fewer schedules. -/
 theorem waitFree_imp_cof {valid : Trace I O → Prop} {conflict : O → O → Prop}
     (h : WaitFree valid) : ConflictObstructionFree valid conflict := by
   intro t ht i hi hc _
   exact h t ht i hi hc
 
+/-- COF sits above obstruction freedom: a solo suffix is in particular conflict-free. -/
 theorem cof_imp_obstructionFree {valid : Trace I O → Prop} {conflict : O → O → Prop}
     (h : ConflictObstructionFree valid conflict) : ObstructionFree valid := by
   intro t ht i hi hc hs
   exact h t ht i hi hc (t.eventuallyConflictFree_of_solo conflict hs)
 
-/-- Section 3, first lemma. -/
+/-- Section 3, first lemma: when every pair of operations conflicts (`≍ = O × O`), COF
+degenerates to obstruction freedom. -/
 theorem cof_iff_obstructionFree_of_full {valid : Trace I O → Prop}
     {conflict : O → O → Prop} (hfull : ∀ a b, conflict a b) :
     ConflictObstructionFree valid conflict ↔ ObstructionFree valid := by
@@ -79,7 +101,8 @@ theorem cof_iff_obstructionFree_of_full {valid : Trace I O → Prop}
   intro h t ht i hi hc hf
   exact h t ht i hi hc ((t.eventuallyConflictFree_iff_solo hfull i).mp hf)
 
-/-- Section 3, second lemma. -/
+/-- Section 3, second lemma: when no two operations conflict (`≍ = ∅`), COF degenerates
+to wait freedom. -/
 theorem cof_iff_waitFree_of_empty {valid : Trace I O → Prop}
     {conflict : O → O → Prop} (hempty : ∀ a b, ¬ conflict a b) :
     ConflictObstructionFree valid conflict ↔ WaitFree valid := by
