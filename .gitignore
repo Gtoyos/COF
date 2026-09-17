@@ -26,6 +26,7 @@
 *.pdf
 *.run.xml
 *.snm
+*.spl
 *.synctex.gz
 *.toc
 *.vrb
