@@ -1,1 +1,31 @@
+# Lean / Lake build output and dependencies
 /.lake
+
+# macOS
+.DS_Store
+
+# LaTeX: the paper and its supporting files are deliberately kept out of the
+# repository. Only the Lean development is version-controlled.
+*.tex
+*.cls
+*.sty
+*.bib
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.log
+*.lot
+*.nav
+*.out
+*.pdf
+*.run.xml
+*.snm
+*.synctex.gz
+*.toc
+*.vrb
