@@ -14,5 +14,7 @@ name = "mathlib"
 scope = "leanprover-community"
 rev = "v4.35.0-rc2"
 
+
 [[lean_lib]]
 name = "COF"
+globs = ["COF", "COF.Audit", "COF.NonVacuity"]
