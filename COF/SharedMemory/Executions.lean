@@ -26,6 +26,15 @@ theorem execution_decision {c : Config P R V S} {schedule : ℕ → P}
   | base => exact hd
   | succ m _ ih => exact a.step_decision _ _ _ _ ih
 
+/-- A process that has not been scheduled yet keeps its initial local state. -/
+theorem execution_proc_of_unscheduled (c : Config P R V S) (schedule : ℕ → P) {p : P} {t : ℕ}
+    (h : ∀ m < t, schedule m ≠ p) : (a.execution c schedule t).proc p = c.proc p := by
+  induction t with
+  | zero => rfl
+  | succ t ih =>
+    change (a.step (a.execution c schedule t) (schedule t)).proc p = c.proc p
+    rw [a.step_local_other _ (Ne.symm (h t (by omega))), ih fun m hm => h m (by omega)]
+
 /-- Prepend a finite schedule to an infinite one. -/
 def prepend (ps : List P) (schedule : ℕ → P) : ℕ → P :=
   match ps with

@@ -1,12 +1,13 @@
 import COF.Impossibility
 import COF.Objects
 
-/-! Reduction from universal constructions. Only the necessary single-shot,
-binary-operation/binary-response fragment of universality is needed. A full
-linearizable universal construction must in particular satisfy this fragment.
-All invocations are present initially, so their intervals overlap: a linearization
-is a sequential ordering including every completed invocation, and optionally
-pending invocations. -/
+/-! The single-shot, binary-operation/binary-response fragment of universality, and its
+impossibility. All invocations are present initially, so their intervals overlap: a
+linearization is a sequential ordering including every completed invocation, and optionally
+pending invocations. This fragment is an intermediate step. `UniversalConstruction.lean` states
+the full notion, with repeated invocations and real-time order, proves that it implies this
+fragment (`binaryUniversal_of_cofUniversal`), and derives the paper's corollary in its full form
+(`no_cofUniversal`). -/
 namespace COF
 
 namespace Object
@@ -98,8 +99,9 @@ theorem termination_of_consensus_objectCOF (h : a.ObjectCOF consensusObject) :
 end SharedMemory.Algorithm
 
 /-- A deliberately weak necessary fragment of universality. Register, value, and
-local-state types may depend on the object. Proving even this fragment impossible
-rules out full linearizable COF universal constructions. -/
+local-state types may depend on the object. The full notion implies it
+(`binaryUniversal_of_cofUniversal`), so proving even this fragment impossible rules out full
+linearizable COF universal constructions. -/
 def BinaryUniversal (P : Type) [DecidableEq P] : Prop :=
   ∀ (Q : Type) (obj : Object Q Bool Bool),
     ∃ (R V S : Type) (_ : DecidableEq R) (a : SharedMemory.Algorithm P R V S),
@@ -107,7 +109,7 @@ def BinaryUniversal (P : Type) [DecidableEq P] : Prop :=
 
 /-- Paper Corollary `cor:no_cof_univ`, for the necessary fragment above: instantiate the
 construction at the consensus object and it becomes a COF consensus algorithm, which
-cannot exist. -/
+cannot exist. The corollary in its full form is `no_cofUniversal`. -/
 theorem no_binaryUniversal {P : Type} [DecidableEq P] (p₀ p₁ p₂ : P)
     (h₀₁ : p₀ ≠ p₁) (h₂₀ : p₂ ≠ p₀) (h₂₁ : p₂ ≠ p₁) : ¬ BinaryUniversal P := by
   intro h

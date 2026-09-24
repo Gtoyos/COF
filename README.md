@@ -5,9 +5,11 @@ This project formalizes the main impossibility argument in
 
 The development proves that a deterministic asynchronous read/write-register
 algorithm cannot satisfy binary consensus safety and conflict-obstruction-free
-termination when there are at least three processes. It also proves the
-universal-construction reduction and the two progress-equivalence lemmas in
-Section 3. There are no admitted proofs or project-specific axioms.
+termination when there are at least three processes. It also proves the paper's
+corollary that no conflict-obstruction-free universal construction exists, with
+linearizability and COF stated in full for implementations with repeated
+invocations, and the two progress-equivalence lemmas in Section 3. There are no
+admitted proofs or project-specific axioms.
 
 The paper's remark that COF consensus *is* implementable for two processes is a
 cited result, which the paper does not prove. The development takes it as a single
@@ -34,7 +36,8 @@ Import the complete development with `import COF`.
 
 ## Paper-to-code map
 
-Names below are in `COF.SharedMemory.Algorithm`, unless otherwise qualified.
+Names below are in `COF.SharedMemory.Algorithm`, unless otherwise qualified;
+`Implementation.x` abbreviates `COF.SharedMemory.Implementation.x`.
 
 | Paper result or definition | Lean declaration | File |
 | --- | --- | --- |
@@ -53,7 +56,12 @@ Names below are in `COF.SharedMemory.Algorithm`, unless otherwise qualified.
 | Consensus impossibility (`no_quasi_cons`) | `no_cof_consensus`, `no_cof_consensus_fin` | `COF/Impossibility.lean` |
 | Two-process COF consensus is implementable (§4.1, cited, not proved) | `COF.TwoProcessCOFConsensus`: a **hypothesis** | `COF/Tightness.lean` |
 | The three-process bound is tight, given the cited result | `COF.cofConsensusImplementable_fin_iff`, `COF.twoProcessCOFConsensus_iff_threshold` | `COF/Tightness.lean` |
-| Universal-construction impossibility (`cor:no_cof_univ`) | `COF.no_binaryUniversal` | `COF/Universal.lean` |
+| Implementations of arbitrary objects, with repeated invocations | `COF.SharedMemory.Implementation`, `Implementation.act`, `Implementation.history`, `Implementation.trace` | `COF/SharedMemory/Implementation.lean` |
+| Histories, real-time order, linearizability (Herlihy–Wing) | `COF.OpRecord`, `COF.History`, `COF.Linearizable` | `COF/Linearizability.lean` |
+| Linearizable, COF implementations of an object | `Implementation.Linearizable`, `Implementation.ConflictObstructionFree` | `COF/SharedMemory/Implementation.lean` |
+| COF universal construction, and its impossibility (`cor:no_cof_univ`) | `COF.COFUniversal`, `COF.no_cofUniversal`, `COF.no_cofUniversal_fin` | `COF/UniversalConstruction.lean` |
+| The reduction to consensus: a single-shot client is a consensus algorithm | `Implementation.singleShot`, `Implementation.embed_step`, `Implementation.no_linearizable_cof_consensus` | `COF/UniversalConstruction.lean` |
+| Single-shot fragments, implied by the full notion | `Linearizes`, `ObjectCOF`, `COF.BinaryUniversal`, `COF.binaryUniversal_of_cofUniversal` | `COF/Universal.lean`, `COF/UniversalConstruction.lean` |
 | Trace-level COF implies the concrete liveness condition | `objectCOF_of_trace_cof`, `cofTermination_of_initial_trace_cof`, `no_linearizable_cof` | `COF/TraceBridge.lean` |
 
 ## Model and scope
@@ -77,14 +85,15 @@ Names below are in `COF.SharedMemory.Algorithm`, unless otherwise qualified.
 - `no_cof_consensus` needs three distinct process identifiers, not a finite process
   type. Thus additional processes can remain unscheduled. The `Fin n` specialization
   states the result directly for `3 ≤ n`.
-- `BinaryUniversal` is a deliberately weak necessary fragment of universality: it
-  asks for implementations of all sequential specifications with Boolean operations
-  and responses, allowing register/value/local-state types to vary with the object.
-  Safety requires one sequential ordering explaining all completed responses in each
-  finite execution, optionally including pending invocations. All invocations
-  overlap in this restricted client. Impossibility of this fragment suffices to rule
-  out a full linearizable COF universal construction. A general history framework
-  with repeated invocations and real-time ordering is **not** implemented here.
+- The universal-construction corollary uses a multi-shot model: implementations of
+  arbitrary sequential objects, where the environment invokes operations on idle
+  processes at arbitrary times and each process runs until its operation returns.
+  `COFUniversal` asks, for every object, for an implementation whose every finite
+  history is linearizable (Herlihy–Wing, with real-time order) and that satisfies
+  the Section 3 COF condition over all its infinite executions. The proof runs such
+  an implementation under a single-shot client, which is a consensus algorithm of
+  the model above. The single-shot fragment `BinaryUniversal` is an intermediate
+  step, proved to follow from the full notion (`binaryUniversal_of_cofUniversal`).
 - The trace-level progress lemmas apply to one object and abstract valid traces;
   `TraceBridge.lean` connects them to concrete single-shot executions, including
   reachable execution suffixes. An explicit multi-object composition model is
@@ -131,7 +140,9 @@ pins the statement of the one hypothesis, `TwoProcessCOFConsensus`, and the
 signature of the theorem that assumes it. It is part of the default build target,
 so a regression fails `lake build`.
 
-`COF/NonVacuity.lean` rules out the two ways this impossibility result could be
+`COF/NonVacuity.lean` rules out the ways these impossibility results could be
 empty: `consensus_satisfiable` shows `Safe` and `COFTermination` are jointly
-satisfiable, and `alt_not_homogeneous` shows the COF liveness clause genuinely
-exempts schedules, so it is strictly weaker than wait-free termination.
+satisfiable, `alt_not_homogeneous` shows the COF liveness clause genuinely
+exempts schedules, so it is strictly weaker than wait-free termination, and
+`cofUniversal_unit` shows that a COF universal construction exists for one
+process, so the full notions are satisfiable.

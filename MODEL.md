@@ -23,7 +23,9 @@ axiom (§7).
 |---|---|
 | `SharedMemory.Algorithm.no_cof_consensus` (`COF/Impossibility.lean:85`) | Theorem `th:no_quasi_cons` — no COF consensus for ≥ 3 processes |
 | `SharedMemory.Algorithm.no_cof_consensus_fin` (`COF/Impossibility.lean:93`) | same, for `Fin n` with `3 ≤ n` |
-| `no_binaryUniversal` (`COF/Universal.lean:111`) | Corollary `cor:no_cof_univ` — no COF universal construction |
+| `no_cofUniversal` (`COF/UniversalConstruction.lean:691`) | Corollary `cor:no_cof_univ` — no COF universal construction, with linearizability and COF in full (§6) |
+| `no_cofUniversal_fin` (`COF/UniversalConstruction.lean:699`) | same, for `Fin n` with `3 ≤ n` |
+| `SharedMemory.Implementation.no_linearizable_cof_consensus` (`COF/UniversalConstruction.lean:663`) | the corollary's core: no linearizable COF implementation of binary consensus for ≥ 3 processes |
 | `SharedMemory.Algorithm.no_linearizable_cof` (`COF/TraceBridge.lean:75`) | the same impossibility, stated against the paper's own trace-level COF definition |
 | `cofConsensusImplementable_fin_iff` (`COF/Tightness.lean:133`) | the remark in §4.1 that three processes is the exact threshold, **assuming** the cited two-process result (§7) |
 
@@ -250,31 +252,109 @@ decision. `not_both_valent` (`COF/Valency.lean:102`) records the side condition.
 
 ---
 
-## 6. The universality reduction
+## 6. The universal-construction corollary
 
-`COF/Universal.lean`. Both hypotheses are deliberately *weak* — they are
-necessary fragments of the real conditions, so refuting them refutes the real
-thing.
+The paper's Corollary `cor:no_cof_univ` concerns a universal construction: "an
+algorithm that takes as input a sequential object specification and produces a
+linearizable shared-memory implementation satisfying COF termination". It is
+stated here with the full notions, in a model with repeated invocations, and
+proved by the paper's reduction to consensus.
 
-- `Linearizes obj` (line 47) — from every reachable configuration there is a
-  single duplicate-free sequential order of invocations whose responses account
-  for *every* decision in that configuration. One order is shared by all
-  decisions, not chosen per decision. This is implied by, and much weaker than,
-  full linearizability.
-- `ObjectCOF obj` (line 54) — per-process conflict-free termination, restricted
-  to single-shot executions.
-- `BinaryUniversal P` (line 103) — for *every* binary object there exist register,
-  value and state types and an algorithm satisfying the two fragments above.
+### The multi-shot model
 
-`safe_of_consensus_linearizes` derives agreement and validity from
-linearizability of `consensusObject`; `termination_of_consensus_objectCOF`
-derives `COFTermination` from `ObjectCOF consensusObject`. All invocations are
-present initially, so their intervals overlap and any of them may be linearized.
+`COF/SharedMemory/Implementation.lean`. An `Implementation P R V S O Resp`
+implements an object with operations `O` and responses `Resp` by one
+deterministic automaton per process:
 
-`COF/TraceBridge.lean` closes the loop: `objectCOF_of_trace_cof` derives
-`ObjectCOF` from the paper's trace-level `ConflictObstructionFree`, so
-`no_linearizable_cof` is stated directly against the §3 definition rather than
-against a hand-tailored liveness clause.
+```lean
+structure Implementation (P R V S O Resp : Type*) where
+  initialMemory : R → V
+  initialState  : P → S
+  invoke        : P → O → S → S                      -- absorb an invocation
+  instruction   : P → S → OpInstruction R V S Resp   -- next step while pending
+```
+
+As in §2, a step is one read or one write plus local computation: a read
+continuation sees the value read, a write continuation sees nothing, and a step
+may return a response. The environment invokes operations on idle processes, at
+arbitrary times (`Action.invoke p o`). A process with a pending operation takes
+steps when scheduled (`Action.step p`), until one returns. Processes take steps
+only while executing an operation, so invoking a busy process or scheduling an
+idle one does nothing. Executions are arbitrary sequences of actions from the
+initial configuration: there is no fairness, and a crash is a process no longer
+scheduled. A configuration also records each process's pending operation and
+number of returned operations, as bookkeeping the automaton cannot see.
+
+### Histories and linearizability
+
+`COF/Linearizability.lean`. The history of a finite execution lists its operation
+instances, each an interval (`OpRecord`): process, operation, invocation time,
+and, once it has returned, response and response time. `Linearizable obj H` is
+Herlihy and Wing's condition: some sequence `S` of distinct instances of `H`,
+each paired with a response,
+
+- contains every completed instance with its actual response, while a pending
+  instance may be included with a response chosen for it, or dropped;
+- is legal for the sequential specification (`Object.Legal`); and
+- respects real-time order: no instance is placed after one that returned before
+  it was invoked.
+
+An implementation is linearizable when every finite execution has a
+linearizable history (`Implementation.Linearizable`).
+
+### Conflict-obstruction freedom
+
+`Implementation.trace` presents an infinite execution as a `Trace` (§4). The
+operation instance `(p, k, o)` is `p`'s `k`-th invocation, of `o`. A step belongs
+to the scheduled process's pending instance, and a process is correct if it
+takes infinitely many steps or eventually has no pending operation.
+`Implementation.ConflictObstructionFree` is the paper's §3 condition,
+`ConflictObstructionFree` of `COF/Progress.lean`, over the traces of *all*
+infinite executions from the initial configuration.
+
+### The corollary
+
+`COF/UniversalConstruction.lean`:
+
+```lean
+def COFUniversal (P : Type*) [DecidableEq P] : Prop :=
+  ∀ (Q O Resp : Type) (obj : Object Q O Resp),
+    ∃ (R V S : Type) (_ : DecidableEq R) (I : Implementation P R V S O Resp),
+      I.Linearizable obj ∧ I.ConflictObstructionFree obj.Conflict
+
+theorem no_cofUniversal (p₀ p₁ p₂ : P)
+    (h₀₁ : p₀ ≠ p₁) (h₂₀ : p₂ ≠ p₀) (h₂₁ : p₂ ≠ p₁) : ¬ COFUniversal P
+```
+
+The proof is the paper's. `singleShot` runs an implementation of a binary object
+under a single-shot client: at its first step, a process invokes the operation
+its input names, and it decides the response. This client is an `Algorithm` of
+§2, and `embed_step` proves that it is the implementation, step for step: each
+client step is one action of the implementation. Linearizability of the implementation yields `Linearizes` for
+the client (`linearizes_singleShot`), and its COF yields `ObjectCOF`
+(`objectCOF_singleShot`). At the consensus object these give `Safe` and
+`COFTermination`, which `no_cof_consensus` refutes
+(`Implementation.no_linearizable_cof_consensus`).
+
+### The single-shot fragments
+
+`COF/Universal.lean` defines the single-shot fragments that the reduction passes
+through:
+
+- `Linearizes obj` — from every reachable configuration, a single duplicate-free
+  sequential order of invocations accounts for every decision.
+- `ObjectCOF obj` — per-process conflict-free termination, for single-shot
+  executions.
+- `BinaryUniversal P` — for every binary object, an algorithm satisfying both.
+
+`binaryUniversal_of_cofUniversal` proves that the full notion implies the
+fragment, for the same processes, so the fragment is a consequence of the full
+notion rather than a stand-in for it.
+`safe_of_consensus_linearizes` and `termination_of_consensus_objectCOF` turn the
+fragments for `consensusObject` into `Safe` and `COFTermination`.
+`COF/TraceBridge.lean` relates the fragment to the paper's trace-level condition
+directly, for single-shot executions: `objectCOF_of_trace_cof` derives
+`ObjectCOF` from `ConflictObstructionFree`.
 
 ---
 
@@ -352,6 +432,10 @@ Nothing else. In particular the following are **not** assumed:
 - no bound on how many processes crash
 - no restriction on which configurations the scheduler may visit
 
+The universal-construction corollary `no_cofUniversal` likewise assumes only a
+`COFUniversal` construction, with the full notions of §6, and three distinct
+processes.
+
 These are the assumptions of the impossibility results. The one theorem that goes
 beyond them, `cofConsensusImplementable_fin_iff`, additionally takes the cited
 two-process result `TwoProcessCOFConsensus` (§7) as an explicit hypothesis.
@@ -384,8 +468,11 @@ careful proof). None weakens it.
    three distinct processes, rather than for a three-process system. Other
    processes may exist and simply never be scheduled.
 
-4. **Linearizability and universality are replaced by necessary fragments**
-   (§6), which strengthens the corollary.
+4. **A universal construction is asked of each object separately.** The paper's
+   construction is one algorithm taking the specification as input;
+   `COFUniversal` asks only that each object, with types in `Type`, have some
+   implementation. A uniform algorithm provides such a family, so this is a
+   weaker hypothesis and the corollary is stronger.
 
 ---
 
@@ -397,9 +484,12 @@ These match the paper and are stated here so they are not mistaken for gaps:
   as in the paper (and as in FLP).
 - **Atomic read/write registers only.** The result is false for stronger
   primitives; `commutation_or_erasure` is exactly where this is used.
-- **Binary consensus**, and **single-shot** invocations for the universality
-  reduction. Both make the impossibility stronger, since binary single-shot
-  consensus is the easiest case.
+- **Binary consensus.** The impossibility is for binary consensus, the easiest
+  case, which makes it stronger. The universal-construction corollary uses only
+  the construction's implementation of the binary consensus object.
+- **One object at a time.** The multi-shot model implements a single object, as
+  the corollary requires; a model of several objects composed together is not
+  needed and is not formalized.
 - **The two-process converse is assumed, not proved** (§7). The paper notes
   (§4.1) that COF consensus *is* implementable for two processes, which is what
   makes the three-process bound tight, and cites rather than proves it.
@@ -411,7 +501,7 @@ These match the paper and are stated here so they are not mistaken for gaps:
 ## 11. Non-vacuity
 
 An impossibility theorem is worthless if its hypotheses are unsatisfiable.
-`COF/NonVacuity.lean` is part of the build and proves two things:
+`COF/NonVacuity.lean` is part of the build and proves three things:
 
 - `consensus_satisfiable` — `∃ a, a.Consensus`. `Safe` and `COFTermination` are
   jointly satisfiable (witness: `decideOwnInput` on one process, which decides its
@@ -421,6 +511,10 @@ An impossibility theorem is worthless if its hypotheses are unsatisfiable.
   opposite inputs is not eventually homogeneous. So `COFTermination` genuinely
   exempts some schedules and is strictly weaker than wait-free termination: the
   result is not a restatement of FLP.
+- `cofUniversal_unit` — `COFUniversal Unit`. With one process, every object has a
+  linearizable, wait-free implementation: the process keeps the object's state
+  and answers each operation at its first step (`seqImpl`). So the full notions
+  of §6 are satisfiable, and `no_cofUniversal` really needs its three processes.
 
 The hypothesis of the threshold theorem is a different matter: it is the cited
 result itself, so its non-vacuity is exactly what is assumed (§7).

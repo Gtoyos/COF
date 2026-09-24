@@ -39,6 +39,28 @@ if a proof is replaced by an admission or an additional axiom is introduced. -/
 #guard_msgs in
 #print axioms COF.SharedMemory.Algorithm.no_linearizable_cof
 
+/-- info: 'COF.no_cofUniversal' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms COF.no_cofUniversal
+
+/-- info: 'COF.no_cofUniversal_fin' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms COF.no_cofUniversal_fin
+
+/--
+info: 'COF.binaryUniversal_of_cofUniversal' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
+#guard_msgs in
+#print axioms COF.binaryUniversal_of_cofUniversal
+
+/--
+info: 'COF.SharedMemory.Implementation.no_linearizable_cof_consensus' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+-/
+#guard_msgs in
+#print axioms COF.SharedMemory.Implementation.no_linearizable_cof_consensus
+
 /-! The paper cites its two-process remark rather than proving it, and so does this
 development: it enters only as the explicit hypothesis `TwoProcessCOFConsensus`, never as an
 axiom, so it cannot show up in the axiom lists. Its statement and the signature of the theorem
