@@ -26,6 +26,18 @@ def trace (input : P → Bool) (c : Config P R V S) (schedule : ℕ → P) : Tra
 def ValidTrace (t : Trace P Bool) : Prop :=
   ∃ input c, a.Reachable input c ∧ ∃ schedule, t = a.trace input c schedule
 
+/-- The traces of the paper's own executions, which start from an initial configuration. -/
+def InitialTrace (t : Trace P Bool) : Prop :=
+  ∃ input schedule, t = a.trace input (a.initial input) schedule
+
+/-- A step of the trace belongs to the process scheduled at that point. -/
+theorem trace_step_eq {input : P → Bool} {c : Config P R V S} {schedule : ℕ → P} {k : ℕ}
+    {q : P} (h : (a.trace input c schedule).step k = some q) : schedule k = q := by
+  dsimp [trace] at h
+  split at h
+  · exact Option.some.inj h
+  · cases h
+
 /-- Full trace-level COF implies the necessary liveness fragment used in the
 universal-construction reduction. In particular, completed invocations are never
 silently counted as pending conflicting operations. -/
@@ -37,14 +49,26 @@ theorem objectCOF_of_trace_cof {Q : Type*} (obj : Object Q Bool Bool)
   obtain ⟨N, hN⟩ := hfree
   refine ⟨N, ?_⟩
   intro k hk q hstep hqp
-  have hq : schedule k = q := by
-    dsimp [trace] at hstep
-    split at hstep
-    · exact Option.some.inj hstep
-    · cases hstep
+  have hq := a.trace_step_eq hstep
   change ¬ obj.Conflict (input p) (input q)
   rw [← hq]
   exact hN k hk (hq ▸ hqp)
+
+/-- Trace-level COF for consensus, required only of the paper's own executions, already
+yields the consensus liveness clause. Executions from other reachable configurations are
+recovered by `cofTermination_iff_initial`, so nothing is asked of them. -/
+theorem cofTermination_of_initial_trace_cof
+    (h : ConflictObstructionFree a.InitialTrace consensusObject.Conflict) :
+    a.COFTermination := by
+  refine a.cofTermination_iff_initial.mpr fun input schedule hhom p hinf => ?_
+  obtain ⟨N, b, hN⟩ := hhom
+  obtain ⟨k, hk, he⟩ := hinf N
+  have hp : input p = b := by simpa [he] using hN k hk
+  apply h _ ⟨input, schedule, rfl⟩ p trivial (Or.inl hinf)
+  refine Or.inr ⟨N, fun j hj q hstep _ => ?_⟩
+  change ¬ consensusObject.Conflict (input p) (input q)
+  rw [consensus_conflict_iff, hp, ← a.trace_step_eq hstep, hN j hj]
+  exact not_not.mpr rfl
 
 /-- The consensus instance of the original trace-level progress condition is
 incompatible with single-shot linearizability for three or more processes. -/

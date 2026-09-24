@@ -10,6 +10,11 @@ standard axioms (`propext`, `Classical.choice`, `Quot.sound`); there are no
 axiom footprint of each headline result and is part of the default build, so a
 regression fails CI rather than passing with a warning.
 
+One result is assumed, not proved: the paper's remark that COF consensus is
+implementable for two processes, which the paper itself takes from the
+literature. It is an explicit hypothesis of the one theorem that uses it, not an
+axiom (§7).
+
 ---
 
 ## 1. What is proved
@@ -19,7 +24,8 @@ regression fails CI rather than passing with a warning.
 | `SharedMemory.Algorithm.no_cof_consensus` (`COF/Impossibility.lean:85`) | Theorem `th:no_quasi_cons` — no COF consensus for ≥ 3 processes |
 | `SharedMemory.Algorithm.no_cof_consensus_fin` (`COF/Impossibility.lean:93`) | same, for `Fin n` with `3 ≤ n` |
 | `no_binaryUniversal` (`COF/Universal.lean:111`) | Corollary `cor:no_cof_univ` — no COF universal construction |
-| `SharedMemory.Algorithm.no_linearizable_cof` (`COF/TraceBridge.lean:51`) | the same impossibility, stated against the paper's own trace-level COF definition |
+| `SharedMemory.Algorithm.no_linearizable_cof` (`COF/TraceBridge.lean:75`) | the same impossibility, stated against the paper's own trace-level COF definition |
+| `cofConsensusImplementable_fin_iff` (`COF/Tightness.lean:133`) | the remark in §4.1 that three processes is the exact threshold, **assuming** the cited two-process result (§7) |
 
 Supporting lemmas map one-to-one onto the paper's:
 
@@ -272,7 +278,62 @@ against a hand-tailored liveness clause.
 
 ---
 
-## 7. Complete list of assumptions
+## 7. The cited two-process result: a hypothesis
+
+`COF/Tightness.lean`. The paper states (§4.1) that COF consensus *is* implementable
+in the read–write model for two processes, which is what makes three the exact
+threshold. It does not prove this. It cites the obstruction-free consensus algorithm
+of Attiya, Guerraoui, Hendler and Kuznetsov (*The complexity of obstruction-free
+implementations*, JACM 56(4), 2009), which terminates in solo runs and whenever all
+processes propose the same value; for two processes, those two guarantees together
+are exactly COF termination. Constructing and verifying that algorithm is outside
+the scope of the paper, and of this development. The result is therefore
+**assumed, not proved**:
+
+```lean
+def COFConsensusImplementable (P : Type*) [DecidableEq P] : Prop :=
+  ∃ (R V S : Type) (_ : DecidableEq R) (a : Algorithm P R V S), a.Consensus
+
+def TwoProcessCOFConsensus : Prop := COFConsensusImplementable (Fin 2)
+```
+
+- **A hypothesis, not an axiom.** `TwoProcessCOFConsensus` is an ordinary
+  proposition. The theorem that needs it takes it as an explicit argument, so the
+  dependency is visible in that theorem's statement, and nothing else depends on it:
+  the impossibility theorems, the universality reduction and the trace bridge are
+  unconditional. An `axiom` would instead be global and invisible in the statements
+  that rely on it, and a misstated one could make the whole development
+  inconsistent. `COF/Audit.lean` pins the hypothesis and the signature of the
+  theorem that assumes it.
+- **What it is used for.** The paper uses the remark to show that its
+  three-process bound is tight, and so does the development:
+
+  ```lean
+  theorem cofConsensusImplementable_fin_iff (h₂ : TwoProcessCOFConsensus) (n : ℕ) :
+      COFConsensusImplementable (Fin n) ↔ n ≤ 2
+  ```
+
+  The hypothesis is used for `n = 2` only. The case `n ≥ 3` is
+  `no_cof_consensus_fin`, and `n ≤ 1` is proved outright with the trivial algorithm
+  `decideOwnInput`, in which each process decides its own input at its first step.
+- **No more than needed.** `twoProcessCOFConsensus_iff_threshold` proves the
+  hypothesis *equivalent* to the threshold statement: it is exactly the part of
+  that conclusion not proved here.
+- **No more than the paper claims.** The hypothesis is stated with `Consensus`, the
+  notion that `no_cof_consensus` refutes, so the threshold theorem speaks of a
+  single notion throughout. Its liveness clause `COFTermination` is weaker than the
+  paper's (§9, item 1), and `cofConsensusImplementable_of_trace` proves that the
+  claim in the paper's own terms implies the hypothesis: `Safe` together with the
+  §3 trace-level `ConflictObstructionFree` for `consensusObject`, required only of
+  the paper's executions, those from an initial configuration (`InitialTrace`).
+  The bridge is `cofTermination_of_initial_trace_cof` (`COF/TraceBridge.lean`).
+- **Trusted, not checked.** If the hypothesis failed in this model, the threshold
+  theorem would hold vacuously. It rests on the cited algorithm alone. The
+  impossibility results do not depend on it either way.
+
+---
+
+## 8. Complete list of assumptions
 
 The impossibility theorem assumes **only**:
 
@@ -291,9 +352,13 @@ Nothing else. In particular the following are **not** assumed:
 - no bound on how many processes crash
 - no restriction on which configurations the scheduler may visit
 
+These are the assumptions of the impossibility results. The one theorem that goes
+beyond them, `cofConsensusImplementable_fin_iff`, additionally takes the cited
+two-process result `TwoProcessCOFConsensus` (§7) as an explicit hypothesis.
+
 ---
 
-## 8. Where the formalization departs from the paper
+## 9. Where the formalization departs from the paper
 
 Every departure makes the theorem **stronger** (a weaker hypothesis, or a more
 careful proof). None weakens it.
@@ -304,7 +369,8 @@ careful proof). None weakens it.
    ignores completed invocations. This constrains *fewer* schedules, so it is a
    *weaker* liveness assumption and the impossibility is stronger. The
    paper-faithful version lives in `COF/Progress.lean` + `COF/TraceBridge.lean`
-   and is proved to imply this one, so nothing is lost.
+   and is proved to imply this one, so nothing is lost. The two-process hypothesis
+   of §7 uses the same clause, so it too assumes less than the paper's claim.
 
 2. **Only one of the two active processes need be scheduled infinitely often.**
    The paper's proof of `th:no_quasi_cons` says "both `p₁` and `p₂` are required
@@ -323,7 +389,7 @@ careful proof). None weakens it.
 
 ---
 
-## 9. Scope limitations
+## 10. Scope limitations
 
 These match the paper and are stated here so they are not mistaken for gaps:
 
@@ -334,30 +400,34 @@ These match the paper and are stated here so they are not mistaken for gaps:
 - **Binary consensus**, and **single-shot** invocations for the universality
   reduction. Both make the impossibility stronger, since binary single-shot
   consensus is the easiest case.
-- **The converse for two processes is not formalized.** The paper notes (§4.1)
-  that COF consensus *is* implementable for two processes, which is what makes
-  the three-process bound tight. That direction is out of scope here; the
-  impossibility does not depend on it.
+- **The two-process converse is assumed, not proved** (§7). The paper notes
+  (§4.1) that COF consensus *is* implementable for two processes, which is what
+  makes the three-process bound tight, and cites rather than proves it.
+  `TwoProcessCOFConsensus` states it, and only `cofConsensusImplementable_fin_iff`
+  assumes it; the impossibility does not depend on it.
 
 ---
 
-## 10. Non-vacuity
+## 11. Non-vacuity
 
 An impossibility theorem is worthless if its hypotheses are unsatisfiable.
 `COF/NonVacuity.lean` is part of the build and proves two things:
 
 - `consensus_satisfiable` — `∃ a, a.Consensus`. `Safe` and `COFTermination` are
-  jointly satisfiable (witness: a one-process system that decides its own
-  input), so `no_cof_consensus` is not true merely because its hypotheses
-  contradict each other.
+  jointly satisfiable (witness: `decideOwnInput` on one process, which decides its
+  own input at its first step), so `no_cof_consensus` is not true merely because
+  its hypotheses contradict each other.
 - `alt_not_homogeneous` — the alternating schedule over two processes with
   opposite inputs is not eventually homogeneous. So `COFTermination` genuinely
   exempts some schedules and is strictly weaker than wait-free termination: the
   result is not a restatement of FLP.
 
+The hypothesis of the threshold theorem is a different matter: it is the cited
+result itself, so its non-vacuity is exactly what is assumed (§7).
+
 ---
 
-## 11. Dependencies and verification
+## 12. Dependencies and verification
 
 The development depends on **Mathlib only**. It is self-contained: it does not
 use CSLib's FLP proof, and does not derive the result from FLP.

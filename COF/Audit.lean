@@ -39,3 +39,25 @@ if a proof is replaced by an admission or an additional axiom is introduced. -/
 #guard_msgs in
 #print axioms COF.SharedMemory.Algorithm.no_linearizable_cof
 
+/-! The paper cites its two-process remark rather than proving it, and so does this
+development: it enters only as the explicit hypothesis `TwoProcessCOFConsensus`, never as an
+axiom, so it cannot show up in the axiom lists. Its statement and the signature of the theorem
+that consumes it are pinned instead. -/
+
+/-- info: def COF.TwoProcessCOFConsensus : Prop :=
+COF.COFConsensusImplementable (Fin 2) -/
+#guard_msgs in
+#print COF.TwoProcessCOFConsensus
+
+/-- info: COF.cofConsensusImplementable_fin_iff (h₂ : COF.TwoProcessCOFConsensus) (n : ℕ) :
+  COF.COFConsensusImplementable (Fin n) ↔ n ≤ 2 -/
+#guard_msgs in
+#check COF.cofConsensusImplementable_fin_iff
+
+/-- info: 'COF.cofConsensusImplementable_fin_iff' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms COF.cofConsensusImplementable_fin_iff
+
+/-- info: 'COF.twoProcessCOFConsensus_iff_threshold' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms COF.twoProcessCOFConsensus_iff_threshold

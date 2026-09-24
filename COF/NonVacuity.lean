@@ -19,79 +19,20 @@ See `MODEL.md`. -/
 namespace COF.NonVacuity
 open COF COF.SharedMemory
 
-/-- One process, one register, trivial values, local state = own proposal. -/
-def solo : Algorithm Unit Unit Unit Bool where
-  initialMemory := fun _ => ()
-  initialState _ b := b
-  instruction _ s := .write () () ⟨s, some s⟩
-
-/-- Every step leaves a decision in place. -/
-theorem solo_step_decides (d : Config Unit Unit Unit Bool) (p : Unit) :
-    ∃ v, ((solo.step d p).proc p).decision = some v := by
-  refine ⟨(d.proc p).decision.getD (d.proc p).state, ?_⟩
-  cases h : (d.proc p).decision <;>
-    simp [Algorithm.step, solo, Function.update, h]
-
-/-- The invariant: local state is always the process's own input, and any
-decision is its own input. -/
-def Inv (input : Unit → Bool) (d : Config Unit Unit Unit Bool) : Prop :=
-  ∀ r, (d.proc r).state = input r ∧
-    ((d.proc r).decision = none ∨ (d.proc r).decision = some (input r))
-
-/-- The invariant survives one step. -/
-theorem solo_step_inv {input : Unit → Bool} {d : Config Unit Unit Unit Bool}
-    (h : Inv input d) (t : Unit) : Inv input (solo.step d t) := by
-  intro r
-  obtain ⟨hs, hdec⟩ := h r
-  obtain rfl : r = t := Subsingleton.elim r t
-  rcases hdec with hn | hn <;>
-    simp [Algorithm.step, solo, Function.update, hs, hn]
-
-/-- The invariant survives a finite schedule. -/
-theorem solo_run_inv {input : Unit → Bool} :
-    ∀ (ps : List Unit) {d : Config Unit Unit Unit Bool}, Inv input d →
-      Inv input (solo.run d ps)
-  | [], _, h => h
-  | t :: ts, _, h => solo_run_inv ts (solo_step_inv h t)
-
-/-- Hence the invariant holds at every reachable configuration. -/
-theorem solo_inv {input : Unit → Bool} {c : Config Unit Unit Unit Bool}
-    (h : solo.Reachable input c) : Inv input c := by
-  obtain ⟨ps, -, rfl⟩ := h
-  exact solo_run_inv ps (fun r => ⟨rfl, Or.inl rfl⟩)
-
-/-- Agreement and validity hold: the only value ever decided is the lone process's own
-input. -/
-theorem solo_safe : solo.Safe := by
-  intro input c hr
-  have hinv := solo_inv hr
-  have hdec : ∀ v, c.Decided v → v = input () := by
-    rintro v ⟨p, hp⟩
-    obtain rfl : p = () := Subsingleton.elim p ()
-    rcases (hinv ()).2 with h | h
-    · rw [h] at hp; cases hp
-    · rw [h] at hp; exact (Option.some.inj hp).symm
-  exact ⟨fun v w hv hw => (hdec v hv).trans (hdec w hw).symm,
-    fun v hv => ⟨(), (hdec v hv).symm⟩⟩
-
-/-- Liveness holds: any process scheduled at all decides at its very next step. -/
-theorem solo_termination : solo.COFTermination := by
-  intro input c _ schedule _ p hinf
-  obtain ⟨k, -, hk⟩ := hinf 0
-  obtain ⟨v, hv⟩ := solo_step_decides (solo.execution c schedule k) p
-  refine ⟨k + 1, v, ?_⟩
-  change ((solo.step (solo.execution c schedule k) (schedule k)).proc p).decision = _
-  rw [hk]; exact hv
+/-- One process, one register, trivial values, local state = own proposal, decided at the
+first step. This is the trivial algorithm `Algorithm.decideOwnInput` (`COF/Tightness.lean`),
+which is proved safe and COF-terminating for every system of at most one process. -/
+abbrev solo : Algorithm Unit Unit Unit Bool := Algorithm.decideOwnInput Unit
 
 /-- **The hypotheses of the impossibility theorem are jointly satisfiable.** -/
 theorem consensus_satisfiable : ∃ a : Algorithm Unit Unit Unit Bool, a.Consensus :=
-  ⟨solo, solo_safe, solo_termination⟩
+  ⟨solo, Algorithm.decideOwnInput_consensus⟩
 
 /-- Sanity check that decisions really are reachable in this witness, i.e. `Safe`
 is not satisfied merely because nothing ever decides. -/
 theorem solo_decides :
-    ((solo.run (solo.initial (fun _ => true)) [()]).proc ()).decision = some true := by
-  simp [Algorithm.run, Algorithm.step, Algorithm.initial, solo, Function.update]
+    ((solo.run (solo.initial (fun _ => true)) [()]).proc ()).decision = some true :=
+  rfl
 
 
 /-- Two processes with opposite proposals. -/

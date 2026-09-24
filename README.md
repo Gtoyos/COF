@@ -9,6 +9,11 @@ termination when there are at least three processes. It also proves the
 universal-construction reduction and the two progress-equivalence lemmas in
 Section 3. There are no admitted proofs or project-specific axioms.
 
+The paper's remark that COF consensus *is* implementable for two processes is a
+cited result, which the paper does not prove. The development takes it as a single
+explicit hypothesis, `COF.TwoProcessCOFConsensus`, and derives from it that three
+processes is the exact threshold. Nothing else depends on it.
+
 [`MODEL.md`](MODEL.md) states the formal model in full: every assumption, every
 place the formalization departs from the paper, and the non-vacuity checks.
 
@@ -46,8 +51,10 @@ Names below are in `COF.SharedMemory.Algorithm`, unless otherwise qualified.
 | A reachable bivalent configuration (`init_tobivalent`) | `reachable_bivalent` | `COF/InitialBivalence.lean` |
 | A bivalent successor (`bivalent_to_bivalent`) | `bivalent_successor` | `COF/Bivalence.lean` |
 | Consensus impossibility (`no_quasi_cons`) | `no_cof_consensus`, `no_cof_consensus_fin` | `COF/Impossibility.lean` |
+| Two-process COF consensus is implementable (§4.1, cited, not proved) | `COF.TwoProcessCOFConsensus`: a **hypothesis** | `COF/Tightness.lean` |
+| The three-process bound is tight, given the cited result | `COF.cofConsensusImplementable_fin_iff`, `COF.twoProcessCOFConsensus_iff_threshold` | `COF/Tightness.lean` |
 | Universal-construction impossibility (`cor:no_cof_univ`) | `COF.no_binaryUniversal` | `COF/Universal.lean` |
-| Trace-level COF implies the concrete liveness condition | `objectCOF_of_trace_cof`, `no_linearizable_cof` | `COF/TraceBridge.lean` |
+| Trace-level COF implies the concrete liveness condition | `objectCOF_of_trace_cof`, `cofTermination_of_initial_trace_cof`, `no_linearizable_cof` | `COF/TraceBridge.lean` |
 
 ## Model and scope
 
@@ -80,8 +87,17 @@ Names below are in `COF.SharedMemory.Algorithm`, unless otherwise qualified.
   with repeated invocations and real-time ordering is **not** implemented here.
 - The trace-level progress lemmas apply to one object and abstract valid traces;
   `TraceBridge.lean` connects them to concrete single-shot executions, including
-  reachable execution suffixes. An explicit multi-object composition model and the
-  paper's two-process implementability remark are outside this development.
+  reachable execution suffixes. An explicit multi-object composition model is
+  outside this development.
+- The paper's two-process implementability remark (§4.1) cites the obstruction-free
+  consensus algorithm of Attiya, Guerraoui, Hendler and Kuznetsov rather than proving
+  it, so it is **assumed, not proved**. `TwoProcessCOFConsensus` states it, and
+  `cofConsensusImplementable_fin_iff` takes it as an explicit hypothesis, never an
+  axiom, to conclude that COF consensus for `n` processes is implementable iff
+  `n ≤ 2`. `twoProcessCOFConsensus_iff_threshold` shows the hypothesis is exactly the
+  two-process case of that conclusion, and `cofConsensusImplementable_of_trace` shows
+  that the claim in the paper's own terms implies it. The impossibility results do not
+  depend on it.
 
 ## Relationship to CSLib's FLP development
 
@@ -110,8 +126,10 @@ development now builds against Mathlib alone.
 
 `COF/Audit.lean` checks the foundational axiom dependencies of the principal
 results. The expected dependencies are Lean's standard `propext`,
-`Classical.choice`, and `Quot.sound`, with no `sorryAx` or added axioms. It is
-part of the default build target, so a regression fails `lake build`.
+`Classical.choice`, and `Quot.sound`, with no `sorryAx` or added axioms. It also
+pins the statement of the one hypothesis, `TwoProcessCOFConsensus`, and the
+signature of the theorem that assumes it. It is part of the default build target,
+so a regression fails `lake build`.
 
 `COF/NonVacuity.lean` rules out the two ways this impossibility result could be
 empty: `consensus_satisfiable` shows `Safe` and `COFTermination` are jointly
