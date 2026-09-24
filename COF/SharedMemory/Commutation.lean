@@ -2,7 +2,7 @@ import COF.SharedMemory.Model
 
 /-! The read/write case analysis used in both critical-configuration arguments. -/
 namespace COF.SharedMemory.Algorithm
-variable {P R V S : Type*} [DecidableEq P] [DecidableEq R]
+variable {P R V S : Type*}
 variable (a : Algorithm P R V S)
 
 /-- For any two distinct processes `p` and `q`, one of three things happens:

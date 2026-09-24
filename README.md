@@ -67,7 +67,10 @@ Names below are in `COF.SharedMemory.Algorithm`, unless otherwise qualified;
 ## Model and scope
 
 - A configuration contains shared registers and a local state for each process.
-  Register, register-value, and local-state types may be infinite.
+  Register, register-value, and local-state types may be infinite. Nothing is
+  assumed of the process, register, value, or local-state types, not even
+  decidable equality: the model decides equality classically, so no theorem
+  carries a decidability hypothesis.
 - Each step is one atomic read or write. A read continuation receives the read
   value; a write continuation cannot inspect the overwritten value. Decisions
   persist. The scheduler is arbitrary: there is no fairness assumption. A crash
@@ -136,8 +139,9 @@ development now builds against Mathlib alone.
 `COF/Audit.lean` checks the foundational axiom dependencies of the principal
 results. The expected dependencies are Lean's standard `propext`,
 `Classical.choice`, and `Quot.sound`, with no `sorryAx` or added axioms. It also
-pins the statement of the one hypothesis, `TwoProcessCOFConsensus`, and the
-signature of the theorem that assumes it. It is part of the default build target,
+pins the statements of the headline theorems, which carry exactly the paper's
+hypotheses, and the statement of the one cited hypothesis,
+`TwoProcessCOFConsensus`, with the signature of the theorem that assumes it. It is part of the default build target,
 so a regression fails `lake build`.
 
 `COF/NonVacuity.lean` rules out the ways these impossibility results could be

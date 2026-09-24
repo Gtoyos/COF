@@ -30,12 +30,14 @@ structure OpRecord (P O Resp : Type*) where
 abbrev History (P O Resp : Type*) := List (OpRecord P O Resp)
 
 namespace History
-variable {P O Resp : Type*} [DecidableEq P]
+variable {P O Resp : Type*}
 
+open scoped Classical in
 /-- Record an event that happened at time `t`. An invocation opens a new instance; a response
 closes the pending instance of its process, which is unique because processes are
-sequential. -/
-def record (H : History P O Resp) (t : ℕ) : Option (Event P O Resp) → History P O Resp
+sequential. Which instance that is gets decided classically, so nothing is assumed of the
+process type. -/
+noncomputable def record (H : History P O Resp) (t : ℕ) : Option (Event P O Resp) → History P O Resp
   | none => H
   | some (.inv p o) => H ++ [⟨p, o, t, none⟩]
   | some (.res p r) => H.map fun a =>

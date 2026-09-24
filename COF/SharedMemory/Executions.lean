@@ -3,7 +3,7 @@ import COF.SharedMemory.Model
 /-! Prefixing and suffixing infinite schedules. These lemmas relate termination
 from arbitrary reachable configurations to termination from initial configurations. -/
 namespace COF.SharedMemory.Algorithm
-variable {P R V S : Type*} [DecidableEq P] [DecidableEq R]
+variable {P R V S : Type*}
 variable (a : Algorithm P R V S)
 
 /-- Shift the initial step from the schedule into the starting configuration. -/
@@ -43,7 +43,6 @@ def prepend (ps : List P) (schedule : ℕ → P) : ℕ → P :=
     | 0 => p
     | n + 1 => prepend ps schedule n
 
-omit [DecidableEq P] in
 @[simp] theorem prepend_add (ps : List P) (schedule : ℕ → P) (n : ℕ) :
     prepend ps schedule (ps.length + n) = schedule n := by
   induction ps with

@@ -5,7 +5,7 @@ import COF.SharedMemory.Executions
 reachable starting configurations makes closure under finite execution prefixes explicit.
 No scheduler fairness is imposed: only infinitely scheduled processes must terminate. -/
 namespace COF.SharedMemory.Algorithm
-variable {P R V S : Type*} [DecidableEq P] [DecidableEq R]
+variable {P R V S : Type*}
 variable (a : Algorithm P R V S)
 
 /-- The COF termination clause in Section 4.1: if eventually only processes that proposed

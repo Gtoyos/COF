@@ -40,7 +40,7 @@ theorem consensus_responses_initial (input : P → Bool) (p : P) (ps : List P) :
 end Object
 
 namespace SharedMemory.Algorithm
-variable {P R V S Q : Type*} [DecidableEq P] [DecidableEq R]
+variable {P R V S Q : Type*}
 variable (a : Algorithm P R V S)
 
 /-- Necessary safety condition of a single-shot linearizable implementation. The
@@ -102,20 +102,18 @@ end SharedMemory.Algorithm
 local-state types may depend on the object. The full notion implies it
 (`binaryUniversal_of_cofUniversal`), so proving even this fragment impossible rules out full
 linearizable COF universal constructions. -/
-def BinaryUniversal (P : Type) [DecidableEq P] : Prop :=
+def BinaryUniversal (P : Type) : Prop :=
   ∀ (Q : Type) (obj : Object Q Bool Bool),
-    ∃ (R V S : Type) (_ : DecidableEq R) (a : SharedMemory.Algorithm P R V S),
+    ∃ (R V S : Type) (a : SharedMemory.Algorithm P R V S),
       a.Linearizes obj ∧ a.ObjectCOF obj
 
 /-- Paper Corollary `cor:no_cof_univ`, for the necessary fragment above: instantiate the
 construction at the consensus object and it becomes a COF consensus algorithm, which
 cannot exist. The corollary in its full form is `no_cofUniversal`. -/
-theorem no_binaryUniversal {P : Type} [DecidableEq P] (p₀ p₁ p₂ : P)
+theorem no_binaryUniversal {P : Type} (p₀ p₁ p₂ : P)
     (h₀₁ : p₀ ≠ p₁) (h₂₀ : p₂ ≠ p₀) (h₂₁ : p₂ ≠ p₁) : ¬ BinaryUniversal P := by
   intro h
-  obtain ⟨R, V, S, inst, a, hs, ht⟩ := h (Option Bool) consensusObject
-  -- Register the existentially bound decidability instance for the algorithm's registers.
-  let _ : DecidableEq R := inst
+  obtain ⟨R, V, S, a, hs, ht⟩ := h (Option Bool) consensusObject
   exact a.no_cof_consensus p₀ p₁ p₂ h₀₁ h₂₀ h₂₁
     ⟨a.safe_of_consensus_linearizes hs, a.termination_of_consensus_objectCOF ht⟩
 

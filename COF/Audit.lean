@@ -11,7 +11,9 @@ if a proof is replaced by an admission or an additional axiom is introduced. -/
 #guard_msgs in
 #print axioms COF.cof_iff_waitFree_of_empty
 
-/-- info: 'COF.SharedMemory.Algorithm.initial_valent' depends on axioms: [propext, Quot.sound] -/
+/--
+info: 'COF.SharedMemory.Algorithm.initial_valent' depends on axioms: [propext, Classical.choice, Quot.sound]
+-/
 #guard_msgs in
 #print axioms COF.SharedMemory.Algorithm.initial_valent
 
@@ -60,6 +62,35 @@ info: 'COF.SharedMemory.Implementation.no_linearizable_cof_consensus' depends on
 -/
 #guard_msgs in
 #print axioms COF.SharedMemory.Implementation.no_linearizable_cof_consensus
+
+/-! The headline theorems carry exactly the paper's hypotheses: an algorithm, or a universal
+construction, and three distinct processes. Nothing is assumed of the process or register
+types, not even decidable equality: the model decides it classically. Their statements, and the
+definition of a COF universal construction, are pinned. -/
+
+/--
+info: COF.SharedMemory.Algorithm.no_cof_consensus.{u_1, u_2, u_3, u_4} {P : Type u_1} {R : Type u_2} {V : Type u_3}
+  {S : Type u_4} (a : COF.SharedMemory.Algorithm P R V S) (p₀ p₁ p₂ : P) (h₀₁ : p₀ ≠ p₁) (h₂₀ : p₂ ≠ p₀)
+  (h₂₁ : p₂ ≠ p₁) : ¬a.Consensus
+-/
+#guard_msgs in
+#check COF.SharedMemory.Algorithm.no_cof_consensus
+
+/--
+info: COF.no_cofUniversal.{u_1} {P : Type u_1} (p₀ p₁ p₂ : P) (h₀₁ : p₀ ≠ p₁) (h₂₀ : p₂ ≠ p₀) (h₂₁ : p₂ ≠ p₁) :
+  ¬COF.COFUniversal P
+-/
+#guard_msgs in
+#check COF.no_cofUniversal
+
+/--
+info: def COF.COFUniversal.{u_1} : Type u_1 → Prop :=
+fun P ↦
+  ∀ (Q O Resp : Type) (obj : COF.Object Q O Resp),
+    ∃ R V S I, I.Linearizable obj ∧ I.ConflictObstructionFree obj.Conflict
+-/
+#guard_msgs in
+#print COF.COFUniversal
 
 /-! The paper cites its two-process remark rather than proving it, and so does this
 development: it enters only as the explicit hypothesis `TwoProcessCOFConsensus`, never as an

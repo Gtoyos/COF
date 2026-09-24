@@ -4,7 +4,8 @@ import Mathlib.Tactic.Common
 /-! Deterministic asynchronous atomic-register algorithms. The scheduler chooses one
 process per step, with no fairness requirement. A crash is represented by the scheduler
 never choosing that process again. Register and local-state types may be infinite.
-Inputs are private and the initial memory is independent of them. -/
+Inputs are private and the initial memory is independent of them. No decidability is assumed
+of processes or registers: `step` decides their equality classically. -/
 namespace COF.SharedMemory
 
 /-- The local state of a process, together with the response of its pending high-level
@@ -36,7 +37,7 @@ structure Algorithm (P R V S : Type*) where
   initialState : P → Bool → S
   instruction : P → S → Instruction R V S
 
-variable {P R V S : Type*} [DecidableEq P] [DecidableEq R]
+variable {P R V S : Type*}
 
 namespace Algorithm
 variable (a : Algorithm P R V S)
@@ -46,13 +47,18 @@ holds only its own input. -/
 def initial (input : P → Bool) : Config P R V S :=
   ⟨a.initialMemory, fun p => ⟨a.initialState p (input p), none⟩⟩
 
+open scoped Classical in
 /-- Schedule one step of `p`: perform its shared-memory event and install its new local
 state.
 
 Decisions are irrevocable — `old.decision.or next.decision` keeps the first response.
 Continuing to schedule a decided process is harmless for the proofs; liveness concerns
-only processes that have not yet decided. -/
-def step (c : Config P R V S) (p : P) : Config P R V S :=
+only processes that have not yet decided.
+
+Updating one register and one process requires deciding which registers and processes are
+affected; that is decided classically, so the model asks for no decision procedure on either
+type. -/
+noncomputable def step (c : Config P R V S) (p : P) : Config P R V S :=
   let old := c.proc p
   let finish := fun (memory : R → V) (next : Local S) =>
     Config.mk memory (Function.update c.proc p
@@ -62,7 +68,7 @@ def step (c : Config P R V S) (p : P) : Config P R V S :=
   | .write r v next => finish (Function.update c.memory r v) next
 
 /-- Execute a finite schedule. -/
-def run (a : Algorithm P R V S) (c : Config P R V S) : List P → Config P R V S
+noncomputable def run (a : Algorithm P R V S) (c : Config P R V S) : List P → Config P R V S
   | [] => c
   | p :: ps => a.run (a.step c p) ps
 
@@ -162,7 +168,6 @@ theorem run_decision (c : Config P R V S) (ps : List P) (q : P) (v : Bool)
 def Indist (observers : Set P) (c d : Config P R V S) : Prop :=
   c.memory = d.memory ∧ ∀ p ∈ observers, c.proc p = d.proc p
 
-omit [DecidableEq P] [DecidableEq R] in
 /-- Fewer observers can distinguish less. -/
 theorem Indist.restrict {observers other : Set P} {c d : Config P R V S}
     (h : Indist observers c d) (hs : other ⊆ observers) : Indist other c d :=
@@ -206,7 +211,7 @@ theorem run_local_untouched (c : Config P R V S) {ps : List P} {p : P}
     rw [run_cons, ih _ h.2, a.step_local_other c h.1]
 
 /-- Infinite execution under an arbitrary scheduler. -/
-def execution (a : Algorithm P R V S) (c : Config P R V S) (schedule : ℕ → P) :
+noncomputable def execution (a : Algorithm P R V S) (c : Config P R V S) (schedule : ℕ → P) :
     ℕ → Config P R V S
   | 0 => c
   | n + 1 => a.step (a.execution c schedule n) (schedule n)

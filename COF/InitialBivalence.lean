@@ -4,7 +4,7 @@ import COF.Bivalence
 process across a solo execution. The third process supplies the observer needed
 for the indistinguishability argument. -/
 namespace COF.SharedMemory.Algorithm
-variable {P R V S : Type*} [DecidableEq P] [DecidableEq R]
+variable {P R V S : Type*}
 variable (a : Algorithm P R V S)
 
 /-- A *valency flip* at `d`: the configuration is `v`-valent, but one step of the excluded
@@ -60,6 +60,7 @@ theorem external_step_preserves_valency (ht : a.COFTermination) {input : P → B
   simpa using (show (a.step (a.run c ps) p).Decided v from
     ⟨q, a.step_decision (a.run c ps) p q v hb⟩)
 
+open scoped Classical in
 /-- Paper Lemma `init_tobivalent`, generalized to any process type containing three
 distinct processes. Processes other than these three need never be scheduled.
 

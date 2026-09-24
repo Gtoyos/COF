@@ -4,7 +4,7 @@ import COF.Progress
 /-! Relate the trace-level COF definition from Section 3 to the concrete consensus
 model. Completed processes do not contribute further operation-instance steps. -/
 namespace COF.SharedMemory.Algorithm
-variable {P R V S : Type*} [DecidableEq P] [DecidableEq R]
+variable {P R V S : Type*}
 variable (a : Algorithm P R V S)
 
 /-- The trace of a single-shot execution with all proposals invoked initially.
@@ -12,7 +12,8 @@ variable (a : Algorithm P R V S)
 A process's instance is its own proposal; it is `correct` when it takes infinitely many
 steps or has already returned, and a step counts as a step *of the instance* only while
 that instance is still pending — after deciding, the process's steps are idle. -/
-def trace (input : P → Bool) (c : Config P R V S) (schedule : ℕ → P) : Trace P Bool where
+noncomputable def trace (input : P → Bool) (c : Config P R V S) (schedule : ℕ → P) :
+    Trace P Bool where
   operation := input
   invoked := fun _ => True
   completed := fun p => ∃ n v, ((a.execution c schedule n).proc p).decision = some v

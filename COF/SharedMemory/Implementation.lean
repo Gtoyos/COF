@@ -72,16 +72,17 @@ inductive Action (P O : Type*) where
   | step (p : P)
 
 namespace Implementation
-variable {P R V S O Resp : Type*} [DecidableEq P] [DecidableEq R]
+variable {P R V S O Resp : Type*}
 variable (I : Implementation P R V S O Resp)
 
 /-- The initial configuration: every process is idle, in its initial state. -/
 def initial : ImplConfig P R V S O :=
   ⟨I.initialMemory, fun p => ⟨I.initialState p, none, 0⟩⟩
 
+open scoped Classical in
 /-- One step of `p`, executing `o`: the new memory, `p`'s new state, and the response, if the
-step returns one. -/
-def stepResult (c : ImplConfig P R V S O) (p : P) (o : O) :
+step returns one. Which register a write updates is decided classically. -/
+noncomputable def stepResult (c : ImplConfig P R V S O) (p : P) (o : O) :
     (R → V) × ProcState S O × Option Resp :=
   match I.instruction p (c.proc p).state with
   | .read r next =>
@@ -89,7 +90,6 @@ def stepResult (c : ImplConfig P R V S O) (p : P) (o : O) :
       (next (c.memory r)).2)
   | .write r v next => (Function.update c.memory r v, (c.proc p).after o next.1 next.2, next.2)
 
-omit [DecidableEq P] in
 /-- A step of an operation leaves the process in the state `ProcState.after` describes, for the
 response the step returns. -/
 theorem stepResult_after (c : ImplConfig P R V S O) (p : P) (o : O) :
@@ -97,9 +97,11 @@ theorem stepResult_after (c : ImplConfig P R V S O) (p : P) (o : O) :
   unfold stepResult
   cases I.instruction p (c.proc p).state <;> exact ⟨_, rfl⟩
 
+open scoped Classical in
 /-- The effect of an action. Invoking a busy process, or scheduling an idle one, does nothing:
-processes are sequential, and take steps only while executing an operation. -/
-def act (c : ImplConfig P R V S O) : Action P O → ImplConfig P R V S O
+processes are sequential, and take steps only while executing an operation. Which process an
+action updates is decided classically, so nothing is assumed of the process type. -/
+noncomputable def act (c : ImplConfig P R V S O) : Action P O → ImplConfig P R V S O
   | .invoke p o =>
     match (c.proc p).pending with
     | none => ⟨c.memory, Function.update c.proc p
@@ -113,6 +115,7 @@ def act (c : ImplConfig P R V S O) : Action P O → ImplConfig P R V S O
 /-- Returned operations are never taken back: the count only grows. -/
 theorem done_le_act (c : ImplConfig P R V S O) (a : Action P O) (q : P) :
     (c.proc q).done ≤ ((I.act c a).proc q).done := by
+  classical
   cases a with
   | invoke p o =>
     cases hp : (c.proc p).pending with
@@ -137,7 +140,7 @@ theorem done_le_act (c : ImplConfig P R V S O) (a : Action P O) (q : P) :
 
 /-- The event an action contributes to the history: an invocation, a response, or nothing.
 Steps that return no response are internal. -/
-def event (c : ImplConfig P R V S O) : Action P O → Option (Event P O Resp)
+noncomputable def event (c : ImplConfig P R V S O) : Action P O → Option (Event P O Resp)
   | .invoke p o =>
     match (c.proc p).pending with
     | none => some (.inv p o)
@@ -148,20 +151,20 @@ def event (c : ImplConfig P R V S O) : Action P O → Option (Event P O Resp)
     | none => none
 
 /-- Execute a finite sequence of actions. -/
-def run (I : Implementation P R V S O Resp) (c : ImplConfig P R V S O) :
+noncomputable def run (I : Implementation P R V S O Resp) (c : ImplConfig P R V S O) :
     List (Action P O) → ImplConfig P R V S O
   | [] => c
   | a :: as => I.run (I.act c a) as
 
 /-- Execute `acts` from `c`, starting at time `t`, recording its events into `H`. -/
-def recordRun (I : Implementation P R V S O Resp) (t : ℕ) (c : ImplConfig P R V S O)
+noncomputable def recordRun (I : Implementation P R V S O Resp) (t : ℕ) (c : ImplConfig P R V S O)
     (H : History P O Resp) :
     List (Action P O) → History P O Resp
   | [] => H
   | a :: as => I.recordRun (t + 1) (I.act c a) (H.record t (I.event c a)) as
 
 /-- The history of the finite execution `acts` from the initial configuration. -/
-def history (acts : List (Action P O)) : History P O Resp :=
+noncomputable def history (acts : List (Action P O)) : History P O Resp :=
   I.recordRun 0 I.initial [] acts
 
 /-- The implementation is linearizable for `obj`: every finite execution has a linearizable
@@ -170,7 +173,7 @@ def Linearizable {Q : Type*} (obj : Object Q O Resp) : Prop :=
   ∀ acts, COF.Linearizable obj (I.history acts)
 
 /-- The configurations of the infinite execution `α` from `c`. -/
-def execution (I : Implementation P R V S O Resp) (c : ImplConfig P R V S O)
+noncomputable def execution (I : Implementation P R V S O Resp) (c : ImplConfig P R V S O)
     (α : ℕ → Action P O) : ℕ → ImplConfig P R V S O
   | 0 => c
   | n + 1 => I.act (I.execution c α n) (α n)
@@ -187,7 +190,7 @@ It is invoked if `p` was invoked with `o` while idle with `k` returned operation
 once `p` has more than `k` returned operations. Its process is correct if it takes infinitely
 many steps or eventually has no pending operation. A step belongs to the pending instance of the
 scheduled process; scheduling an idle process, or invoking one, is not a step. -/
-def trace (α : ℕ → Action P O) : Trace (P × ℕ × O) O where
+noncomputable def trace (α : ℕ → Action P O) : Trace (P × ℕ × O) O where
   operation i := i.2.2
   invoked i := ∃ t, α t = .invoke i.1 i.2.2 ∧
     ((I.execution I.initial α t).proc i.1).pending = none ∧

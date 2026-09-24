@@ -4,10 +4,9 @@ import COF.InitialBivalence
 of its two active processes; at least one is infinitely scheduled, which suffices
 for the contradiction with COF termination. -/
 namespace COF.SharedMemory.Algorithm
-variable {P R V S : Type*} [DecidableEq P] [DecidableEq R]
+variable {P R V S : Type*}
 variable (a : Algorithm P R V S)
 
-omit [DecidableEq P] in
 /-- An infinite sequence taking only two values takes at least one infinitely often.
 
 The bivalent schedule need not run both active processes infinitely often — it may starve

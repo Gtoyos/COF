@@ -3,7 +3,7 @@ import COF.SharedMemory.Commutation
 
 /-! The critical-square argument and the bivalent-successor lemma. -/
 namespace COF.SharedMemory.Algorithm
-variable {P R V S : Type*} [DecidableEq P] [DecidableEq R]
+variable {P R V S : Type*}
 variable (a : Algorithm P R V S)
 
 /-- The critical square at `c`: `p` and `q` each take a step, and each branch is then

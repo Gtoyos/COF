@@ -21,20 +21,20 @@ axiom (§7).
 
 | Lean result | Paper |
 |---|---|
-| `SharedMemory.Algorithm.no_cof_consensus` (`COF/Impossibility.lean:85`) | Theorem `th:no_quasi_cons` — no COF consensus for ≥ 3 processes |
-| `SharedMemory.Algorithm.no_cof_consensus_fin` (`COF/Impossibility.lean:93`) | same, for `Fin n` with `3 ≤ n` |
-| `no_cofUniversal` (`COF/UniversalConstruction.lean:691`) | Corollary `cor:no_cof_univ` — no COF universal construction, with linearizability and COF in full (§6) |
-| `no_cofUniversal_fin` (`COF/UniversalConstruction.lean:699`) | same, for `Fin n` with `3 ≤ n` |
-| `SharedMemory.Implementation.no_linearizable_cof_consensus` (`COF/UniversalConstruction.lean:663`) | the corollary's core: no linearizable COF implementation of binary consensus for ≥ 3 processes |
-| `SharedMemory.Algorithm.no_linearizable_cof` (`COF/TraceBridge.lean:75`) | the same impossibility, stated against the paper's own trace-level COF definition |
-| `cofConsensusImplementable_fin_iff` (`COF/Tightness.lean:133`) | the remark in §4.1 that three processes is the exact threshold, **assuming** the cited two-process result (§7) |
+| `SharedMemory.Algorithm.no_cof_consensus` (`COF/Impossibility.lean:84`) | Theorem `th:no_quasi_cons` — no COF consensus for ≥ 3 processes |
+| `SharedMemory.Algorithm.no_cof_consensus_fin` (`COF/Impossibility.lean:92`) | same, for `Fin n` with `3 ≤ n` |
+| `no_cofUniversal` (`COF/UniversalConstruction.lean:677`) | Corollary `cor:no_cof_univ` — no COF universal construction, with linearizability and COF in full (§6) |
+| `no_cofUniversal_fin` (`COF/UniversalConstruction.lean:684`) | same, for `Fin n` with `3 ≤ n` |
+| `SharedMemory.Implementation.no_linearizable_cof_consensus` (`COF/UniversalConstruction.lean:650`) | the corollary's core: no linearizable COF implementation of binary consensus for ≥ 3 processes |
+| `SharedMemory.Algorithm.no_linearizable_cof` (`COF/TraceBridge.lean:76`) | the same impossibility, stated against the paper's own trace-level COF definition |
+| `cofConsensusImplementable_fin_iff` (`COF/Tightness.lean:132`) | the remark in §4.1 that three processes is the exact threshold, **assuming** the cited two-process result (§7) |
 
 Supporting lemmas map one-to-one onto the paper's:
 
 | Lean | Paper |
 |---|---|
 | `initial_valent` (`COF/Valency.lean:115`) | Lemma `init_config_1valent` |
-| `reachable_bivalent` (`COF/InitialBivalence.lean:71`) | Lemma `init_tobivalent` |
+| `reachable_bivalent` (`COF/InitialBivalence.lean:72`) | Lemma `init_tobivalent` |
 | `bivalent_successor` (`COF/Bivalence.lean:83`) | Lemma `bivalent_to_bivalent` |
 | `cof_iff_obstructionFree_of_full` (`COF/Progress.lean`) | §3, first lemma (`≍ = O × O` ⟹ COF = OF) |
 | `cof_iff_waitFree_of_empty` (`COF/Progress.lean`) | §3, second lemma (`≍ = ∅` ⟹ COF = WF) |
@@ -56,11 +56,14 @@ constraints on any of them:
 - `V` — register values
 - `S` — process-local state
 
-`R`, `V`, `S` may be infinite. `P` may be infinite. The only requirement is
-`DecidableEq P` and `DecidableEq R`, which is not a restriction: any type admits
-such an instance classically, and it is used purely so `Function.update` computes.
+`R`, `V`, `S` may be infinite. `P` may be infinite. Nothing else is assumed of
+them, not even decidable equality: `step` has to tell which process and which
+register it updates, and it decides that classically. So `step`, `run` and
+`execution` are `noncomputable`, which is irrelevant for proofs, and no theorem
+carries a decidability hypothesis. `COF/Audit.lean` pins the statements of the
+headline theorems to keep it that way.
 
-### An algorithm (`Algorithm`, line 34)
+### An algorithm (`Algorithm`, line 35)
 
 ```lean
 structure Algorithm (P R V S : Type*) where
@@ -77,7 +80,7 @@ structure Algorithm (P R V S : Type*) where
 - **Full generality otherwise.** `S` is arbitrary, so a process may remember
   its entire history; `R` is arbitrary, so there are arbitrarily many registers.
 
-### A step (`Instruction` line 21, `step` line 55)
+### A step (`Instruction` line 22, `step` line 61)
 
 ```lean
 inductive Instruction (R V S : Type*) where
@@ -97,7 +100,7 @@ atomic registers. The model would be unsound for read-modify-write primitives
 such as compare-and-swap, and `COF/SharedMemory/Commutation.lean:19` says so
 explicitly.
 
-### Local state and decisions (`Local`, line 13)
+### Local state and decisions (`Local`, line 14)
 
 ```lean
 structure Local (S : Type*) where
@@ -117,11 +120,11 @@ decided — and it avoids having to model halting.
 
 ### Configurations, schedules, crashes
 
-- `Config` (line 28) = shared memory (`R → V`) together with every process's
+- `Config` (line 29) = shared memory (`R → V`) together with every process's
   local state (`P → Local S`). *(Paper: "A configuration represents a complete
   system state, that is, the local states of all processes together with the
   state of the shared memory.")*
-- `run` (line 65) executes a finite schedule (`List P`); `execution` (line 209)
+- `run` (line 71) executes a finite schedule (`List P`); `execution` (line 214)
   executes an infinite one (`ℕ → P`).
 - **The scheduler is arbitrary.** A schedule is any function `ℕ → P`. No
   fairness, no bound on relative speeds, no timing assumptions. *(Paper: "There
@@ -129,10 +132,10 @@ decided — and it avoids having to model halting.
   timing or scheduling fairness.")*
 - **A crash is simply never being scheduled again.** Any number of processes may
   crash, at any point. There is no failure detector and no bound on failures.
-- `Reach active c d` (line 81) — `d` is reachable from `c` scheduling only
-  processes in `active`. `Reachable input c` (line 86) = reachable from the
+- `Reach active c d` (line 87) — `d` is reachable from `c` scheduling only
+  processes in `active`. `Reachable input c` (line 92) = reachable from the
   initial configuration for `input`, with no restriction on who takes steps.
-- `Indist observers c d` (line 162) — equal shared memory, and equal local state
+- `Indist observers c d` (line 168) — equal shared memory, and equal local state
   for every process in `observers`. This is the indistinguishability relation
   used throughout.
 
@@ -317,9 +320,9 @@ infinite executions from the initial configuration.
 `COF/UniversalConstruction.lean`:
 
 ```lean
-def COFUniversal (P : Type*) [DecidableEq P] : Prop :=
+def COFUniversal (P : Type*) : Prop :=
   ∀ (Q O Resp : Type) (obj : Object Q O Resp),
-    ∃ (R V S : Type) (_ : DecidableEq R) (I : Implementation P R V S O Resp),
+    ∃ (R V S : Type) (I : Implementation P R V S O Resp),
       I.Linearizable obj ∧ I.ConflictObstructionFree obj.Conflict
 
 theorem no_cofUniversal (p₀ p₁ p₂ : P)
@@ -371,8 +374,8 @@ the scope of the paper, and of this development. The result is therefore
 **assumed, not proved**:
 
 ```lean
-def COFConsensusImplementable (P : Type*) [DecidableEq P] : Prop :=
-  ∃ (R V S : Type) (_ : DecidableEq R) (a : Algorithm P R V S), a.Consensus
+def COFConsensusImplementable (P : Type*) : Prop :=
+  ∃ (R V S : Type) (a : Algorithm P R V S), a.Consensus
 
 def TwoProcessCOFConsensus : Prop := COFConsensusImplementable (Fin 2)
 ```
@@ -428,6 +431,8 @@ Nothing else. In particular the following are **not** assumed:
 - no bound on the number of processes (`P` may be infinite; processes other than
   the three named ones need never take a step)
 - no finiteness of registers, values, or local states
+- no decidable equality of processes or registers, nor anything else about their
+  types (§2)
 - no fairness, no synchrony, no failure bound, no failure detector
 - no bound on how many processes crash
 - no restriction on which configurations the scheduler may visit
@@ -460,7 +465,7 @@ careful proof). None weakens it.
    The paper's proof of `th:no_quasi_cons` says "both `p₁` and `p₂` are required
    to complete their operations". The schedule built by the bivalence argument
    need not schedule both infinitely often — it may starve one. The Lean proof
-   uses `two_process_infinite` (`COF/Impossibility.lean:16`) to extract whichever
+   uses `two_process_infinite` (`COF/Impossibility.lean:15`) to extract whichever
    of the two *is* scheduled infinitely often, and derives the contradiction from
    that one alone. This closes a small gap in the written proof.
 

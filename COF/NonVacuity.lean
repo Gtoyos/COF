@@ -31,7 +31,8 @@ theorem consensus_satisfiable : ∃ a : Algorithm Unit Unit Unit Bool, a.Consens
 /-- Sanity check that decisions really are reachable in this witness, i.e. `Safe`
 is not satisfied merely because nothing ever decides. -/
 theorem solo_decides :
-    ((solo.run (solo.initial (fun _ => true)) [()]).proc ()).decision = some true :=
+    ((solo.run (solo.initial (fun _ => true)) [()]).proc ()).decision = some true := by
+  simp [Algorithm.initial]
   rfl
 
 
@@ -57,7 +58,7 @@ theorem alt_not_homogeneous : ¬ ∃ N v, ∀ k ≥ N, two (alt k) = v := by
 /-- Restated: for every algorithm, `COFTermination` says nothing about the
 alternating schedule, so it cannot entail termination under all schedules. -/
 theorem cofTermination_silent_on_alt
-    {R V S : Type} [DecidableEq R] (a : Algorithm Bool R V S)
+    {R V S : Type} (a : Algorithm Bool R V S)
     (_ : a.COFTermination) :
     ¬ ∃ N v, ∀ k ≥ N, two (alt k) = v := alt_not_homogeneous
 
@@ -135,6 +136,9 @@ theorem seqImpl_invoke_idle (c : ImplConfig Unit Unit Unit (Q × Option O) O) (o
   refine ⟨?_, by simp [event, hp]⟩
   simp only [act, hp]
   congr 1
+  funext u
+  cases u
+  simp [seqImpl]
 
 /-- A step of the busy process applies its operation and returns the sequential response. -/
 theorem seqImpl_step_busy (c : ImplConfig Unit Unit Unit (Q × Option O) O) {o : O}
@@ -377,7 +381,7 @@ theorem seqImpl_cof (conflict : O → O → Prop) :
 /-- **The full universal-construction notions are satisfiable.** With one process, a COF
 universal construction exists: the process runs the sequential specification itself. -/
 theorem cofUniversal_unit : COFUniversal Unit := fun _ _ _ obj =>
-  ⟨Unit, Unit, _, inferInstance, seqImpl obj, seqImpl_linearizable obj, seqImpl_cof obj _⟩
+  ⟨Unit, Unit, _, seqImpl obj, seqImpl_linearizable obj, seqImpl_cof obj _⟩
 
 end OneProcess
 

@@ -5,7 +5,7 @@ but an endpoint is deciding if *any* process has decided. In the main argument,
 `active` is `{p₁,p₂}`. Empty continuations are included. -/
 namespace COF.SharedMemory
 
-variable {P R V S : Type*} [DecidableEq P] [DecidableEq R]
+variable {P R V S : Type*}
 
 namespace Config
 

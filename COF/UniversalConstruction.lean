@@ -21,9 +21,9 @@ object, a linearizable and conflict-obstruction-free implementation from read/wr
 Register, value and local-state types may depend on the object. Asking for an implementation of
 each object, rather than one uniform algorithm, makes this weaker and its impossibility
 stronger. -/
-def COFUniversal (P : Type*) [DecidableEq P] : Prop :=
+def COFUniversal (P : Type*) : Prop :=
   ∀ (Q O Resp : Type) (obj : Object Q O Resp),
-    ∃ (R V S : Type) (_ : DecidableEq R) (I : SharedMemory.Implementation P R V S O Resp),
+    ∃ (R V S : Type) (I : SharedMemory.Implementation P R V S O Resp),
       I.Linearizable obj ∧ I.ConflictObstructionFree obj.Conflict
 
 /-- A legal sequential history of the proposals of `L`'s processes is exactly what `responses`
@@ -40,8 +40,8 @@ theorem Object.responses_of_legal {P : Type*} (obj : Object Q Bool Bool) (input 
 namespace SharedMemory.Implementation
 open Function
 
-variable {P R V S : Type*} [DecidableEq P] [DecidableEq R]
-variable {C : Type*} [DecidableEq C] (I : Implementation P R V S Bool Bool) (e : C → P)
+variable {P R V S : Type*}
+variable {C : Type*} (I : Implementation P R V S Bool Bool) (e : C → P)
 
 /-- The local state of a client process: its state in the implementation, and its input. -/
 abbrev ClientState (S : Type*) := ProcState S Bool × Bool
@@ -50,7 +50,7 @@ abbrev ClientState (S : Type*) := ProcState S Bool × Bool
 model. At its first step a process invokes the operation named by its input. It then
 follows the implementation, and decides the response. Once it has returned, it is idle, and its
 steps are reads that change nothing. Nobody else is ever invoked. -/
-def singleShot : Algorithm (C) R V (ClientState S) where
+def singleShot : Algorithm C R V (ClientState S) where
   initialMemory := I.initialMemory
   initialState i b := (⟨I.initialState (e i), none, 0⟩, b)
   instruction i x :=
@@ -72,7 +72,7 @@ def actionOf (i : C) (x : ClientState S) : Action P Bool :=
 
 /-- The configuration of the implementation that a configuration of the client stands for.
 Processes outside the client are idle in their initial state. -/
-noncomputable def embed (c : Config (C) R V (ClientState S)) : ImplConfig P R V S Bool where
+noncomputable def embed (c : Config C R V (ClientState S)) : ImplConfig P R V S Bool where
   memory := c.memory
   proc p :=
     match partialInv e p with
@@ -80,14 +80,14 @@ noncomputable def embed (c : Config (C) R V (ClientState S)) : ImplConfig P R V 
     | none => ⟨I.initialState p, none, 0⟩
 
 /-- The actions of the implementation that a finite run of the client from `c` performs. -/
-def actions (I : Implementation P R V S Bool Bool) (e : C → P)
-    (c : Config (C) R V (ClientState S)) : List (C) → List (Action P Bool)
+noncomputable def actions (I : Implementation P R V S Bool Bool) (e : C → P)
+    (c : Config C R V (ClientState S)) : List C → List (Action P Bool)
   | [] => []
   | i :: is => actionOf e i (c.proc i).state :: actions I e ((I.singleShot e).step c i) is
 
 /-- The actions of the implementation that the client's infinite execution from `c` under
 `schedule` performs. -/
-def infActions (c : Config (C) R V (ClientState S)) (schedule : ℕ → C) :
+noncomputable def infActions (c : Config C R V (ClientState S)) (schedule : ℕ → C) :
     ℕ → Action P Bool :=
   fun m => actionOf e (schedule m)
     (((I.singleShot e).execution c schedule m).proc (schedule m)).state
@@ -98,7 +98,7 @@ def Invoked (x : ClientState S) : Prop := x.1.pending.isSome ∨ x.1.done ≠ 0
 /-- The client's invariant for the input vector `input`. Each process remembers its input and is
 in one of three phases: not yet invoked; executing the operation its input names; or returned,
 which is exactly when it has decided. -/
-def ClientInv (input : C → Bool) (c : Config (C) R V (ClientState S)) : Prop :=
+def ClientInv (input : C → Bool) (c : Config C R V (ClientState S)) : Prop :=
   ∀ i, (c.proc i).state.2 = input i ∧
     (((c.proc i).state.1.pending = none ∧ (c.proc i).state.1.done = 0 ∧
         (c.proc i).decision = none) ∨
@@ -109,7 +109,7 @@ def ClientInv (input : C → Bool) (c : Config (C) R V (ClientState S)) : Prop :
 
 /-- The history of the client so far: one instance for each process that has invoked, proposing
 its input, which has returned exactly when the process has decided, and with its decision. -/
-def HistoryInv (input : C → Bool) (c : Config (C) R V (ClientState S))
+def HistoryInv (input : C → Bool) (c : Config C R V (ClientState S))
     (H : History P Bool Bool) : Prop :=
   (H.map OpRecord.proc).Nodup ∧
     (∀ a ∈ H, ∃ i, a.proc = e i ∧ a.op = input i ∧
@@ -118,18 +118,15 @@ def HistoryInv (input : C → Bool) (c : Config (C) R V (ClientState S))
 
 variable {I e}
 
-omit [DecidableEq P] [DecidableEq R] [DecidableEq C] in
 /-- The client and the implementation share the memory. -/
-@[simp] theorem embed_memory (c : Config (C) R V (ClientState S)) :
+@[simp] theorem embed_memory (c : Config C R V (ClientState S)) :
     (I.embed e c).memory = c.memory := rfl
 
-omit [DecidableEq P] [DecidableEq R] [DecidableEq C] in
 /-- Client process `i` is process `e i` of the implementation. -/
-theorem embed_proc (he : Injective e) (c : Config (C) R V (ClientState S)) (i : C) :
+theorem embed_proc (he : Injective e) (c : Config C R V (ClientState S)) (i : C) :
     (I.embed e c).proc (e i) = (c.proc i).state.1 := by
   simp [embed, partialInv_left he]
 
-omit [DecidableEq P] [DecidableEq R] [DecidableEq C] in
 /-- The client starts where the implementation does. -/
 theorem embed_initial (he : Injective e) (input : C → Bool) :
     I.embed e ((I.singleShot e).initial input) = I.initial := by
@@ -143,9 +140,9 @@ theorem embed_initial (he : Injective e) (input : C → Bool) :
       obtain rfl := (he.isPartialInv i p).mp h
       rfl
 
-omit [DecidableEq R] in
+open scoped Classical in
 /-- Updating one client process updates the corresponding process of the implementation. -/
-theorem embed_update (he : Injective e) (c : Config (C) R V (ClientState S)) (m : R → V)
+theorem embed_update (he : Injective e) (c : Config C R V (ClientState S)) (m : R → V)
     (i : C) (l : Local (ClientState S)) :
     I.embed e ⟨m, update c.proc i l⟩ = ⟨m, update (I.embed e c).proc (e i) l.state.1⟩ := by
   apply ImplConfig.ext
@@ -165,10 +162,10 @@ theorem embed_update (he : Injective e) (c : Config (C) R V (ClientState S)) (m 
         simp [embed_proc he]
       · simp [embed_proc he, update_of_ne hji, update_of_ne (he.ne hji)]
 
-omit [DecidableEq P] in
+open scoped Classical in
 /-- A step of a client process with a pending operation is a step of that operation in the
 implementation. -/
-theorem step_of_pending (he : Injective e) (c : Config (C) R V (ClientState S)) (i : C)
+theorem step_of_pending (he : Injective e) (c : Config C R V (ClientState S)) (i : C)
     {o : Bool} (h : (c.proc i).state.1.pending = some o) :
     (I.singleShot e).step c i =
       ⟨(I.stepResult (I.embed e c) (e i) o).1, update c.proc i
@@ -177,9 +174,9 @@ theorem step_of_pending (he : Injective e) (c : Config (C) R V (ClientState S)) 
   simp only [Algorithm.step, singleShot, h, stepResult, embed_proc he, embed_memory]
   cases I.instruction (e i) (c.proc i).state.1.state <;> rfl
 
-omit [DecidableEq P] in
+open scoped Classical in
 /-- A client process that has not invoked yet invokes its operation, the one its input names. -/
-theorem step_of_fresh (c : Config (C) R V (ClientState S)) (i : C)
+theorem step_of_fresh (c : Config C R V (ClientState S)) (i : C)
     (h : (c.proc i).state.1.pending = none) (h0 : (c.proc i).state.1.done = 0) :
     (I.singleShot e).step c i =
       ⟨c.memory, update c.proc i
@@ -187,11 +184,11 @@ theorem step_of_fresh (c : Config (C) R V (ClientState S)) (i : C)
             some (c.proc i).state.2, 0⟩, (c.proc i).state.2), (c.proc i).decision⟩⟩ := by
   simp only [Algorithm.step, singleShot, h, h0, ite_true, Option.or_none]
 
-omit [DecidableEq P] in
 /-- A client process that has returned is idle: its steps change nothing. -/
-theorem step_of_returned (c : Config (C) R V (ClientState S)) (i : C)
+theorem step_of_returned (c : Config C R V (ClientState S)) (i : C)
     (h : (c.proc i).state.1.pending = none) (h0 : (c.proc i).state.1.done ≠ 0) :
     (I.singleShot e).step c i = c := by
+  classical
   simp only [Algorithm.step, singleShot, h, h0, ite_false, Option.or_none]
   apply Config.ext
   · rfl
@@ -203,7 +200,7 @@ theorem step_of_returned (c : Config (C) R V (ClientState S)) (i : C)
 
 /-- **The simulation.** Each step of the client is one action of the implementation, taken from
 the corresponding configuration. -/
-theorem embed_step (he : Injective e) (c : Config (C) R V (ClientState S)) (i : C) :
+theorem embed_step (he : Injective e) (c : Config C R V (ClientState S)) (i : C) :
     I.embed e ((I.singleShot e).step c i) =
       I.act (I.embed e c) (actionOf e i (c.proc i).state) := by
   cases hp : (c.proc i).state.1.pending with
@@ -217,41 +214,36 @@ theorem embed_step (he : Injective e) (c : Config (C) R V (ClientState S)) (i : 
     · rw [step_of_returned c i hp h0]
       simp [actionOf, act, hp, h0, embed_proc he]
 
-omit [DecidableEq P] [DecidableEq C] in
 /-- The events the client's steps contribute to the history: a step of a pending operation
 contributes its response, if any. -/
-theorem event_of_pending (he : Injective e) (c : Config (C) R V (ClientState S)) (i : C)
+theorem event_of_pending (he : Injective e) (c : Config C R V (ClientState S)) (i : C)
     {o : Bool} (h : (c.proc i).state.1.pending = some o) :
     I.event (I.embed e c) (actionOf e i (c.proc i).state) =
       (I.stepResult (I.embed e c) (e i) o).2.2.map (.res (e i)) := by
   simp [actionOf, event, h, embed_proc he]
 
-omit [DecidableEq P] [DecidableEq C] in
 /-- A process that has not invoked yet contributes its invocation. -/
-theorem event_of_fresh (he : Injective e) (c : Config (C) R V (ClientState S)) (i : C)
+theorem event_of_fresh (he : Injective e) (c : Config C R V (ClientState S)) (i : C)
     (h : (c.proc i).state.1.pending = none) (h0 : (c.proc i).state.1.done = 0) :
     I.event (I.embed e c) (actionOf e i (c.proc i).state) =
       some (.inv (e i) (c.proc i).state.2) := by
   simp [actionOf, event, h, h0, embed_proc he]
 
-omit [DecidableEq P] [DecidableEq C] in
 /-- A process that has returned contributes nothing. -/
-theorem event_of_returned (he : Injective e) (c : Config (C) R V (ClientState S))
+theorem event_of_returned (he : Injective e) (c : Config C R V (ClientState S))
     (i : C) (h : (c.proc i).state.1.pending = none) (h0 : (c.proc i).state.1.done ≠ 0) :
     I.event (I.embed e c) (actionOf e i (c.proc i).state) = none := by
   simp [actionOf, event, h, h0, embed_proc he]
 
-omit [DecidableEq P] [DecidableEq R] [DecidableEq C] in
 /-- Initially, every client process remembers its input and has not invoked yet. -/
 theorem clientInv_initial (input : C → Bool) :
     ClientInv input ((I.singleShot e).initial input) := by
   intro i
   simp [Algorithm.initial, singleShot]
 
-omit [DecidableEq P] in
 /-- The invariant survives any step of the client. -/
 theorem clientInv_step (he : Injective e) {input : C → Bool}
-    {c : Config (C) R V (ClientState S)} (h : ClientInv input c) (j : C) :
+    {c : Config C R V (ClientState S)} (h : ClientInv input c) (j : C) :
     ClientInv input ((I.singleShot e).step c j) := by
   intro i
   by_cases hij : i = j
@@ -270,10 +262,9 @@ theorem clientInv_step (he : Injective e) {input : C → Bool}
   · rw [Algorithm.step_local_other _ _ hij]
     exact h i
 
-omit [DecidableEq P] in
 /-- The invariant holds along every finite run. -/
 theorem clientInv_run (he : Injective e) {input : C → Bool} :
-    ∀ (ps : List (C)) {c : Config (C) R V (ClientState S)}, ClientInv input c →
+    ∀ (ps : List C) {c : Config C R V (ClientState S)}, ClientInv input c →
       ClientInv input ((I.singleShot e).run c ps)
   | [], _, h => h
   | j :: js, _, h => clientInv_run he js (clientInv_step he h j)
@@ -281,10 +272,11 @@ theorem clientInv_run (he : Injective e) {input : C → Bool} :
 /-- The history invariant survives any step of the client, together with the event it
 contributes. -/
 theorem historyInv_step (he : Injective e) {input : C → Bool}
-    {c : Config (C) R V (ClientState S)} {H : History P Bool Bool}
+    {c : Config C R V (ClientState S)} {H : History P Bool Bool}
     (hc : ClientInv input c) (hH : HistoryInv e input c H) (j : C) (t : ℕ) :
     HistoryInv e input ((I.singleShot e).step c j)
       (H.record t (I.event (I.embed e c) (actionOf e j (c.proc j).state))) := by
+  classical
   obtain ⟨hnd, hrec, hex⟩ := hH
   obtain ⟨hin, hph⟩ := hc j
   rcases hph with ⟨hp, h0, hd⟩ | ⟨hp, h0, hd⟩ | ⟨hp, h1, hd⟩
@@ -375,7 +367,7 @@ theorem historyInv_step (he : Injective e) {input : C → Bool}
 
 /-- The invariant holds along any finite run, for the history the run records. -/
 theorem historyInv_run (he : Injective e) {input : C → Bool} :
-    ∀ (ps : List (C)) (c : Config (C) R V (ClientState S)) (H : History P Bool Bool)
+    ∀ (ps : List C) (c : Config C R V (ClientState S)) (H : History P Bool Bool)
       (t : ℕ), ClientInv input c → HistoryInv e input c H →
       HistoryInv e input ((I.singleShot e).run c ps)
         (I.recordRun t (I.embed e c) H (actions I e c ps))
@@ -385,7 +377,6 @@ theorem historyInv_run (he : Injective e) {input : C → Bool} :
     rw [← embed_step he]
     exact historyInv_run he js _ _ _ (clientInv_step he hc j) (historyInv_step he hc hH j t)
 
-omit [DecidableEq P] [DecidableEq R] [DecidableEq C] in
 /-- Reading the client processes off a linearization of the client's history, the operations
 are the processes' inputs. -/
 theorem map_filterMap_partialInv (he : Injective e) (input : C → Bool)
@@ -449,7 +440,7 @@ theorem linearizes_singleShot (he : Injective e) {obj : Object Q Bool Bool}
     exact List.mem_filterMap.mpr ⟨(a, v'), hcomp a ha v' t hret, by simp [hpa, partialInv_left he]⟩
 
 /-- The client's infinite executions are executions of the implementation. -/
-theorem embed_execution (he : Injective e) (c : Config (C) R V (ClientState S))
+theorem embed_execution (he : Injective e) (c : Config C R V (ClientState S))
     (schedule : ℕ → C) (k : ℕ) :
     I.embed e ((I.singleShot e).execution c schedule k) =
       I.execution (I.embed e c) (I.infActions e c schedule) k := by
@@ -468,18 +459,16 @@ theorem execution_infActions (he : Injective e) (input : C → Bool) (schedule :
       I.embed e ((I.singleShot e).execution ((I.singleShot e).initial input) schedule k) := by
   rw [embed_execution he, embed_initial he]
 
-omit [DecidableEq P] in
 /-- The invariant holds along every infinite execution. -/
 theorem clientInv_execution (he : Injective e) {input : C → Bool}
-    {c : Config (C) R V (ClientState S)} (h : ClientInv input c) (schedule : ℕ → C) :
+    {c : Config C R V (ClientState S)} (h : ClientInv input c) (schedule : ℕ → C) :
     ∀ k, ClientInv input ((I.singleShot e).execution c schedule k)
   | 0 => h
   | k + 1 => clientInv_step he (clientInv_execution he h schedule k) (schedule k)
 
-omit [DecidableEq P] in
 /-- Once invoked, a client process stays invoked. -/
 theorem invoked_step (he : Injective e) {input : C → Bool}
-    {c : Config (C) R V (ClientState S)} (hc : ClientInv input c) {i : C}
+    {c : Config C R V (ClientState S)} (hc : ClientInv input c) {i : C}
     (h : Invoked (c.proc i).state) (j : C) :
     Invoked (((I.singleShot e).step c j).proc i).state := by
   by_cases hij : i = j
@@ -494,9 +483,8 @@ theorem invoked_step (he : Injective e) {input : C → Bool}
       exact h
   · rwa [Algorithm.step_local_other _ _ hij]
 
-omit [DecidableEq P] [DecidableEq R] [DecidableEq C] in
 /-- An invoked client process that has not decided is executing its operation. -/
-theorem pending_of_invoked {input : C → Bool} {c : Config (C) R V (ClientState S)}
+theorem pending_of_invoked {input : C → Bool} {c : Config C R V (ClientState S)}
     (hc : ClientInv input c) {i : C} (h : Invoked (c.proc i).state)
     (hd : (c.proc i).decision = none) : (c.proc i).state.1.pending = some (input i) := by
   rcases (hc i).2 with ⟨hp, h0, -⟩ | ⟨hp, -, -⟩ | ⟨-, -, hs⟩
@@ -539,7 +527,6 @@ theorem trace_invoked_infActions (he : Injective e) (input : C → Bool)
   · rw [execution_infActions he, embed_proc he, hfresh]
     rfl
 
-omit [DecidableEq P] in
 /-- After its first scheduling, a client process stays invoked. -/
 theorem invoked_after (he : Injective e) (input : C → Bool) (schedule : ℕ → C)
     {p : C} {t : ℕ} (ht : schedule t = p) (hfirst : ∀ m < t, schedule m ≠ p) :
@@ -676,23 +663,21 @@ open SharedMemory Function
 /-- **The single-shot fragment is a consequence of the full notion.** A COF universal
 construction yields `BinaryUniversal`, for the same processes: run each binary object's
 implementation under the single-shot client. -/
-theorem binaryUniversal_of_cofUniversal {P : Type} [DecidableEq P] (h : COFUniversal P) :
+theorem binaryUniversal_of_cofUniversal {P : Type} (h : COFUniversal P) :
     BinaryUniversal P := by
   intro Q obj
-  obtain ⟨R, V, S, inst, I, hlin, hcof⟩ := h Q Bool Bool obj
-  let _ : DecidableEq R := inst
-  exact ⟨R, V, Implementation.ClientState S, inst, I.singleShot id,
+  obtain ⟨R, V, S, I, hlin, hcof⟩ := h Q Bool Bool obj
+  exact ⟨R, V, Implementation.ClientState S, I.singleShot id,
     Implementation.linearizes_singleShot injective_id hlin,
     Implementation.objectCOF_singleShot injective_id hcof⟩
 
 /-- **Paper Corollary `cor:no_cof_univ`**: no conflict-obstruction-free universal construction
 exists in the read/write model with three or more processes. Its implementation of binary
 consensus would be linearizable and conflict-obstruction-free. -/
-theorem no_cofUniversal {P : Type*} [DecidableEq P] (p₀ p₁ p₂ : P)
+theorem no_cofUniversal {P : Type*} (p₀ p₁ p₂ : P)
     (h₀₁ : p₀ ≠ p₁) (h₂₀ : p₂ ≠ p₀) (h₂₁ : p₂ ≠ p₁) : ¬ COFUniversal P := by
   intro h
-  obtain ⟨R, V, S, inst, I, hlin, hcof⟩ := h (Option Bool) Bool Bool consensusObject
-  let _ : DecidableEq R := inst
+  obtain ⟨R, V, S, I, hlin, hcof⟩ := h (Option Bool) Bool Bool consensusObject
   exact I.no_linearizable_cof_consensus p₀ p₁ p₂ h₀₁ h₂₀ h₂₁ ⟨hlin, hcof⟩
 
 /-- Numeric formulation, for a system of `n ≥ 3` processes. -/

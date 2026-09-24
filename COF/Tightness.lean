@@ -30,7 +30,7 @@ def decideOwnInput (P : Type*) : Algorithm P Unit Unit Bool where
   initialState _ b := b
   instruction _ s := .write () () ⟨s, some s⟩
 
-variable {P : Type*} [DecidableEq P]
+variable {P : Type*}
 
 /-- A step of `p` keeps `p`'s local state, and decides it unless `p` has already decided. -/
 @[simp] theorem decideOwnInput_step_self (c : Config P Unit Unit Bool) (p : P) :
@@ -90,9 +90,9 @@ open SharedMemory
 
 /-- COF consensus is implementable for the process type `P`: some deterministic read/write
 algorithm satisfies agreement, validity and COF termination. Register, value and local-state
-types are existentially quantified, as in `BinaryUniversal`. -/
-def COFConsensusImplementable (P : Type*) [DecidableEq P] : Prop :=
-  ∃ (R V S : Type) (_ : DecidableEq R) (a : Algorithm P R V S), a.Consensus
+types are existentially quantified, as in `BinaryUniversal`, and nothing is assumed of them. -/
+def COFConsensusImplementable (P : Type*) : Prop :=
+  ∃ (R V S : Type) (a : Algorithm P R V S), a.Consensus
 
 /-- **The paper's cited two-process result. This is a hypothesis, not a theorem.**
 
@@ -112,18 +112,17 @@ The paper's terms are agreement and validity, together with the §3 trace-level 
 for the consensus object over the paper's executions, those from an initial configuration.
 For two processes, this shows that the cited result, as the paper states it, implies
 `TwoProcessCOFConsensus`. -/
-theorem cofConsensusImplementable_of_trace {P : Type*} [DecidableEq P]
-    (h : ∃ (R V S : Type) (_ : DecidableEq R) (a : Algorithm P R V S),
+theorem cofConsensusImplementable_of_trace {P : Type*}
+    (h : ∃ (R V S : Type) (a : Algorithm P R V S),
       a.Safe ∧ ConflictObstructionFree a.InitialTrace consensusObject.Conflict) :
     COFConsensusImplementable P := by
-  obtain ⟨R, V, S, _, a, hs, ht⟩ := h
-  exact ⟨R, V, S, _, a, hs, a.cofTermination_of_initial_trace_cof ht⟩
+  obtain ⟨R, V, S, a, hs, ht⟩ := h
+  exact ⟨R, V, S, a, hs, a.cofTermination_of_initial_trace_cof ht⟩
 
 /-- With at most one process, the trivial algorithm `decideOwnInput` solves COF consensus. -/
-theorem cofConsensusImplementable_of_subsingleton (P : Type*) [DecidableEq P] [Subsingleton P] :
+theorem cofConsensusImplementable_of_subsingleton (P : Type*) [Subsingleton P] :
     COFConsensusImplementable P :=
-  ⟨Unit, Unit, Bool, inferInstance, Algorithm.decideOwnInput P,
-    Algorithm.decideOwnInput_consensus⟩
+  ⟨Unit, Unit, Bool, Algorithm.decideOwnInput P, Algorithm.decideOwnInput_consensus⟩
 
 /-- **The three-process bound is tight**, given the cited two-process result: COF consensus for
 `n` processes is implementable exactly when `n ≤ 2`.
@@ -133,7 +132,7 @@ The hypothesis is used for `n = 2` only. For `n ≥ 3` this is `no_cof_consensus
 theorem cofConsensusImplementable_fin_iff (h₂ : TwoProcessCOFConsensus) (n : ℕ) :
     COFConsensusImplementable (Fin n) ↔ n ≤ 2 := by
   constructor
-  · rintro ⟨R, V, S, _, a, ha⟩
+  · rintro ⟨R, V, S, a, ha⟩
     by_contra hn
     exact a.no_cof_consensus_fin (by omega) ha
   · intro hn
