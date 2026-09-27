@@ -193,6 +193,9 @@ noncomputable def execution (I : Implementation P R V S O Resp) (c : ImplConfig 
   | 0 => c
   | n + 1 => I.act (I.execution c α n) (α n)
 
+theorem execution_succ (c : ImplConfig P R V S O) (α : ℕ → Action P O) (n : ℕ) :
+    I.execution c α (n + 1) = I.act (I.execution c α n) (α n) := rfl
+
 /-- `p` takes a step at time `k` of the execution `α`: it is scheduled while it has a pending
 operation. -/
 def StepsAt (α : ℕ → Action P O) (k : ℕ) (p : P) : Prop :=

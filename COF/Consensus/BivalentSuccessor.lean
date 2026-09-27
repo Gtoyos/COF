@@ -54,21 +54,13 @@ theorem bivalent_successor (ht : a.COFTermination) {input : P → Bool}
     (hr : a.Reachable input c) (hb : a.Bivalent {p₁, p₂} c) :
     a.Bivalent {p₁, p₂} (a.step c p₁) ∨ a.Bivalent {p₁, p₂} (a.step c p₂) := by
   by_contra hn
-  have hu : a.Univalent {p₁, p₂} (a.step c p₁) ∧ a.Univalent {p₁, p₂} (a.step c p₂) := by
-    simpa only [not_or, Bivalent, not_not] using hn
-  have heq := fun v w => a.successor_valencies_eq ht (active := {p₁, p₂})
-    (v := v) (w := w) hr (by simp) (by simp) h₁₂
-  -- Equal valencies would pass to `c`; different ones contradict `successor_valencies_eq`.
-  have hsame : ∀ v, a.Valent {p₁, p₂} (a.step c p₁) v → a.Valent {p₁, p₂} (a.step c p₂) v →
-      a.Valent {p₁, p₂} c v := fun v h₁ h₂ =>
-    a.valent_of_successors ⟨p₁, by simp⟩ fun r hr' => by
-      rcases (show r = p₁ ∨ r = p₂ by simpa using hr') with rfl | rfl
-      · exact h₁
-      · exact h₂
-  rcases hu with ⟨h₁ | h₁, h₂ | h₂⟩
-  · exact hb (Or.inl (hsame false h₁ h₂))
-  · cases heq false true h₁ h₂
-  · cases heq true false h₁ h₂
-  · exact hb (Or.inr (hsame true h₁ h₂))
+  simp only [Bivalent, univalent_iff, not_or, not_not] at hn
+  obtain ⟨⟨v, h₁⟩, ⟨w, h₂⟩⟩ := hn
+  -- The two successors cannot have different valencies, and a common valency passes to `c`.
+  obtain rfl := a.successor_valencies_eq ht hr (by simp) (by simp) h₁₂ h₁ h₂
+  refine hb ((a.univalent_iff _ _).mpr ⟨v, a.valent_of_successors ⟨p₁, by simp⟩ fun p hp => ?_⟩)
+  rcases (show p = p₁ ∨ p = p₂ by simpa using hp) with rfl | rfl
+  · exact h₁
+  · exact h₂
 
 end COF.SharedMemory.Algorithm

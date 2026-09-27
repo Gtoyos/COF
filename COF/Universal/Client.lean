@@ -172,8 +172,7 @@ theorem embed_execution (c : Config P R V (ClientState S)) (σ : ℕ → P) (k :
   induction k with
   | zero => rfl
   | succ k ih =>
-    change embed (I.singleShot.step _ (σ k)) = I.act (I.execution _ _ k) _
-    rw [embed_step, ih]
+    rw [Algorithm.execution_succ, execution_succ, embed_step, ih]
     rfl
 
 /-- In particular, from an initial configuration of the client. -/
@@ -236,6 +235,12 @@ theorem clientInv_execution {input : P → Bool} {c : Config P R V (ClientState 
   | 0 => h
   | k + 1 => clientInv_step (clientInv_execution h σ k) (σ k)
 
+variable (I) in
+/-- In particular, the invariant holds along every execution from an initial configuration. -/
+theorem clientInv_initial_execution (input : P → Bool) (σ : ℕ → P) (k : ℕ) :
+    ClientInv input (I.singleShot.execution (I.singleShot.initial input) σ k) :=
+  clientInv_execution (clientInv_initial input) σ k
+
 /-- The history invariant survives a step of the client, together with the event it records. -/
 theorem historyInv_step {input : P → Bool}
     {c : Config P R V (ClientState S)} {H : History P Bool Bool}
@@ -254,12 +259,7 @@ theorem historyInv_step {input : P → Bool}
       rw [hpa] at hinv
       simp [Invoked, hp, h0] at hinv
     refine ⟨?_, ?_, ?_⟩
-    · simp only [History.record, List.map_append, List.map_cons, List.map_nil]
-      refine List.nodup_append.mpr ⟨hnd, List.nodup_singleton _, ?_⟩
-      simp only [List.mem_singleton]
-      rintro _ hx _ rfl
-      obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hx
-      exact hnot a ha
+    · simpa [History.record, List.nodup_append] using ⟨hnd, hnot⟩
     · intro a ha
       simp only [History.record, List.mem_append, List.mem_singleton] at ha
       rcases ha with ha | rfl
@@ -299,12 +299,8 @@ theorem historyInv_step {input : P → Bool}
       rw [hr] at hs
       simp only [Option.map_some, History.record]
       refine ⟨?_, ?_, ?_⟩
-      · rw [List.map_map]
-        convert hnd using 1
-        apply List.map_congr_left
-        intro a _
-        simp only [comp_apply]
-        split <;> rfl
+      · -- Closing an instance does not change the process it belongs to.
+        simpa [List.map_map, comp_def, apply_ite OpRecord.proc] using hnd
       · intro a' ha'
         obtain ⟨a, ha, rfl⟩ := List.mem_map.mp ha'
         obtain ⟨hao, har, hinv⟩ := hrec a ha

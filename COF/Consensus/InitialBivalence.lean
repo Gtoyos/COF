@@ -68,7 +68,7 @@ theorem no_critical_step (ht : a.COFTermination) {input : P → Bool}
     ¬ a.CriticalStep active c p v := by
   intro hcrit
   obtain ⟨ps, hps, b, hb⟩ := a.solo_terminates ht hc q
-  have hreach : a.Reach active c (a.run c ps) := ⟨ps, fun t ht => (hps t ht) ▸ hq, rfl⟩
+  have hreach : a.Reach active c (a.run c ps) := ⟨ps, fun t htps => (hps t htps) ▸ hq, rfl⟩
   obtain rfl := a.valent_decision hcrit.1 hreach ⟨q, hb⟩
   have hend := a.run_induction
     (Motive := fun d => a.CriticalStep active d p v) (allowed := fun t => t = q)

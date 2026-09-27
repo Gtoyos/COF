@@ -222,15 +222,14 @@ theorem invoked_after (input : P → Bool) (σ : ℕ → P) {p : P} {t : ℕ}
       (by rw [hfresh]; simp [Algorithm.initial, singleShot])]
     simp [Invoked]
   | succ m _ ih =>
-    exact invoked_step (clientInv_execution (I := I) (clientInv_initial (I := I) input) σ m)
-      ih (σ m)
+    exact invoked_step (I.clientInv_initial_execution input σ m) ih (σ m)
 
 /-- A client process scheduled infinitely often is correct: it keeps taking steps while it has not
 decided, and is idle for good once it has. -/
 theorem trace_correct_infActions (input : P → Bool) (σ : ℕ → P) {p : P} {t : ℕ}
     (ht : σ t = p) (hfirst : ∀ m < t, σ m ≠ p) (hinf : ∀ N, ∃ k ≥ N, σ k = p) :
     (I.trace (I.infActions (I.singleShot.initial input) σ)).correct (p, 0, input p) := by
-  have hinv := clientInv_execution (I := I) (clientInv_initial (I := I) input) σ
+  have hinv := I.clientInv_initial_execution input σ
   by_cases hdec :
       ∃ m, ((I.singleShot.execution (I.singleShot.initial input) σ m).proc p).decision.isSome
   · right
@@ -264,7 +263,7 @@ theorem trace_conflictFree_infActions (input : P → Bool) (σ : ℕ → P)
   intro k hk j hstep hne
   rw [trace_step_infActions] at hstep
   obtain ⟨o, ho, rfl⟩ := Option.map_eq_some_iff.mp hstep
-  rcases (clientInv_execution (I := I) (clientInv_initial (I := I) input) σ k (σ k)).2 with
+  rcases (I.clientInv_initial_execution input σ k (σ k)).2 with
     ⟨hp, -, -⟩ | ⟨hp, h0, -⟩ | ⟨hp, -, -⟩
   · simp [hp] at ho
   · rw [hp] at ho
@@ -293,12 +292,10 @@ theorem cofTerminationFor_singleShot {obj : Object Q Bool Bool}
   -- The proposal returned, so the process has decided.
   change 0 < ((I.execution I.initial _ t).proc p).done at ht
   rw [execution_infActions, embed_proc] at ht
-  rcases (clientInv_execution (I := I) (clientInv_initial (I := I) input) σ t p).2 with
+  rcases (I.clientInv_initial_execution input σ t p).2 with
     ⟨-, h0, -⟩ | ⟨-, h0, -⟩ | ⟨-, -, hd⟩
-  · rw [h0] at ht
-    exact absurd ht (lt_irrefl 0)
-  · rw [h0] at ht
-    exact absurd ht (lt_irrefl 0)
+  · omega
+  · omega
   · obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp hd
     exact ⟨t, v, hv⟩
 

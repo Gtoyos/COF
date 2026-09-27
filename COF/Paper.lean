@@ -120,14 +120,10 @@ def inputI : Fin 3 → Bool
 /-- The input vector of `Algorithm.reachable_bivalent`, for `p₀ = 0`, is `(0,1,1)`. -/
 theorem zeroAt_zero : Algorithm.zeroAt (0 : Fin 3) = inputI := by
   funext p
-  unfold Algorithm.zeroAt
-  split
-  · rename_i h; subst h; rfl
-  · rename_i h
-    match p, h with
-    | ⟨0, _⟩, h => exact absurd rfl h
-    | ⟨1, _⟩, _ => rfl
-    | ⟨2, _⟩, _ => rfl
+  match p with
+  | 0 => exact Algorithm.zeroAt_self 0
+  | 1 => exact Algorithm.zeroAt_of_ne (by decide)
+  | 2 => exact Algorithm.zeroAt_of_ne (by decide)
 
 /-- "Clearly, if a configuration `C` is `v`-valent and it has a descendant `C'`, `C ⇝π C'`, where
 `π` is `{p₁,p₂}`-only, then `C'` is also `v`-valent." -/

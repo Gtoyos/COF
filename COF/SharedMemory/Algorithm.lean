@@ -122,11 +122,7 @@ theorem Reach.trans {active : Set P} {c d e : Config P R V S}
     (h₁ : a.Reach active c d) (h₂ : a.Reach active d e) : a.Reach active c e := by
   obtain ⟨xs, hx, rfl⟩ := h₁
   obtain ⟨ys, hy, rfl⟩ := h₂
-  exact ⟨xs ++ ys, by
-    intro p hp
-    rcases List.mem_append.mp hp with hp | hp
-    · exact hx p hp
-    · exact hy p hp, by simp⟩
+  exact ⟨xs ++ ys, fun p hp => (List.mem_append.mp hp).elim (hx p) (hy p), by simp⟩
 
 theorem reachable_run {input : P → Bool} {c : Config P R V S}
     (h : a.Reachable input c) (ps : List P) : a.Reachable input (a.run c ps) :=

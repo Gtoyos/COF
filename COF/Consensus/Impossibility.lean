@@ -38,7 +38,6 @@ bivalent configuration (`bivalent_not_decided`, by Agreement). -/
 theorem not_bivalent (hag : a.Agreement) (ht : a.COFTermination) {input : P → Bool}
     {p₁ p₂ : P} (h₁₂ : p₁ ≠ p₂) (hin : input p₁ = input p₂)
     {c : Config P R V S} (hr : a.Reachable input c) : ¬ a.Bivalent {p₁, p₂} c := by
-  classical
   intro hb
   -- The reachable configurations that are bivalent for `{p₁,p₂}`. Each has a bivalent successor.
   let K := {d : Config P R V S // a.Reachable input d ∧ a.Bivalent {p₁, p₂} d}

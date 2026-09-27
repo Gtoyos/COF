@@ -51,6 +51,11 @@ theorem bivalent_iff (active : Set P) (c : Config P R V S) :
   simp only [Bivalent, Univalent, Valent, Bool.not_false, Bool.not_true, not_or, not_not]
   exact and_comm
 
+/-- A configuration is univalent exactly when it has a valency. -/
+theorem univalent_iff (active : Set P) (c : Config P R V S) :
+    a.Univalent active c ↔ ∃ v, a.Valent active c v :=
+  (Bool.exists_bool (p := a.Valent active c)).symm
+
 /-! ## Basic facts -/
 
 /-- "If a configuration `C` is `v`-valent and it has a descendant `C'`, `C ⇝π C'`, where `π` is
@@ -83,12 +88,8 @@ theorem decided_valent (hag : a.Agreement) {input : P → Bool} {active : Set P}
 /-- Nobody has decided in a reachable bivalent configuration. -/
 theorem bivalent_not_decided (hag : a.Agreement) {input : P → Bool} {active : Set P}
     {c : Config P R V S} (hr : a.Reachable input c) (hb : a.Bivalent active c)
-    (v : Bool) : ¬ c.Decided v := by
-  intro hd
-  have hv := a.decided_valent hag hr hd (active := active)
-  cases v
-  · exact hb (Or.inl hv)
-  · exact hb (Or.inr hv)
+    (v : Bool) : ¬ c.Decided v := fun hd =>
+  hb ((a.univalent_iff active c).mpr ⟨v, a.decided_valent hag hr hd⟩)
 
 /-! ## Lemma 3 -/
 

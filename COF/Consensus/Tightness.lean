@@ -41,15 +41,17 @@ theorem decideOwnInput_reachable {input : P → Bool} {c : Config P Unit Unit Bo
   refine (decideOwnInput P).run_induction (allowed := fun _ => True)
     (Motive := fun c => ∀ p, (c.proc p).state = input p ∧
       ∀ v, (c.proc p).decision = some v → v = input p)
-    (fun c t _ _ hc p => ?_) ps _ (Reach.refl _ _ _) (fun p => ?_) (fun _ _ => trivial) p
-  · by_cases hpt : p = t
+    ?step ps _ (Reach.refl _ _ _) ?initial (fun _ _ => trivial) p
+  case initial => simp [initial, decideOwnInput]
+  case step =>
+    intro c t _ _ hc p
+    by_cases hpt : p = t
     · subst hpt
       obtain ⟨hs, hd⟩ := hc p
       refine ⟨by simpa using hs, fun v hv => ?_⟩
       cases h : (c.proc p).decision <;> simp_all
     · rw [step_local_other _ _ hpt]
       exact hc p
-  · simp [initial, decideOwnInput]
 
 theorem decideOwnInput_validity : (decideOwnInput P).Validity := fun _ _ hr _ ⟨p, hp⟩ =>
   ⟨p, ((decideOwnInput_reachable hr p).2 _ hp).symm⟩
@@ -64,8 +66,7 @@ theorem decideOwnInput_cofTermination : (decideOwnInput P).COFTermination := by
   intro input σ _ p hinf
   obtain ⟨k, -, hk⟩ := hinf 0
   refine ⟨k + 1, ?_⟩
-  change ∃ v, (((decideOwnInput P).step _ (σ k)).proc p).decision = some v
-  rw [hk, decideOwnInput_step_self]
+  rw [execution_succ, hk, decideOwnInput_step_self]
   cases ((decideOwnInput P).execution _ σ k |>.proc p).decision <;> simp
 
 /-- With at most one process, `decideOwnInput` is a COF consensus algorithm. -/
