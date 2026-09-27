@@ -19,7 +19,7 @@ weak.linter.style.header = false
 [[require]]
 name = "mathlib"
 scope = "leanprover-community"
-rev = "v4.35.0-rc2"
+rev = "v4.34.1"
 
 # `COF.*` is the module `COF` and every module below it, checks included.
 [[lean_lib]]
