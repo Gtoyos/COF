@@ -1,60 +1,99 @@
+# Audit
+
+How the formalization was checked against the paper, and what the build keeps checking.
+
 ## Verdict
 
-**Not ready to be published as an exact formalization of the whole paper.**
+The formalization matches every numbered result of the paper. Where a Lean statement differs
+from the paper's, it is stronger. No finding is open.
 
-The central three-process consensus impossibility result is convincingly formalized, compiles successfully, and contains no admitted proofs. However, the universal-construction corollary is represented only by a deliberately restricted surrogate, one stated positive result is absent, and the paper itself retains a gap that Lean repairs but the prose does not.
+One result is assumed rather than proved: the paper's remark that COF consensus is implementable
+for two processes, which the paper cites from the literature. It is an explicit hypothesis of a
+single theorem, the three-process threshold, and none of the paper's results depends on it.
 
-I compared all nine pages of the paper :codex-file-citation{path="/Users/gtoyos/Downloads/COF/short_versionv2.pdf" purpose="source"} against the Lean development.
+## Scope
 
-| Component | Status |
+- **Paper**: `short_versionv2.tex`, in its version of 27 September 2026, where Lemma 5 is stated
+  for configurations reachable from `I`.
+- **Results**: Definitions 1 and 2, Lemmas 1 to 5, Theorem 6 and Corollary 7, and the unnumbered
+  claims their proofs use. `COF/Paper.lean` lists them all.
+- **Out of scope**: the two-process remark of §4.1, which is cited, and the introduction's
+  informal example of a collection of queues.
+
+## Method
+
+1. **Reading.** The paper, and every Lean file, with each definition compared to the paper's text.
+2. **Build.** A clean `lake build`, and a scan of the sources, with comments removed, for `sorry`,
+   `axiom`, `native_decide`, `unsafe`, `extern`, custom syntax or instances, and option changes.
+3. **Axioms.** The axioms of every declaration of the development.
+4. **Independent restatement.** Definitions written from the paper's text alone: Validity and
+   Agreement over executions, both readings of COF termination, and the paper's valency on three
+   processes with input vector `(0,1,1)`. Each numbered result, stated with these definitions, was
+   derived from the development's theorems. `COF/Paper.lean` now states the results in the same
+   setting.
+5. **Adversarial checks**, kept in `COF/Checks/`:
+   - a counterexample to Lemma 5 without its reachability hypothesis;
+   - an algorithm separating COF termination from wait-free termination;
+   - the satisfiability of the hypotheses, including a linearizable COF implementation with three
+     processes;
+   - the paper's Figure 1, against Definitions 1 and 2;
+   - linearizability on small histories.
+6. **Regression guards.** In a copy of the project, each of the following failed the build:
+   - a `sorry` in a proof that no pinned statement depends on;
+   - Theorem 6 silently weakened from `3 ≤ n` to `4 ≤ n`;
+   - a new `axiom`.
+
+## Results
+
+| Paper | `COF.Paper` | Verdict |
+|---|---|---|
+| Definition 1 | `definition1` | Exact |
+| Definition 2 | `definition2` | Exact, over every infinite execution of an implementation |
+| Lemma 1 | `lemma1` | Exact |
+| Lemma 2 | `lemma2` | Exact |
+| §4.1, commutation and conflicts of proposals | `propose_commute_decided`, `propose_commute_undecided`, `propose_conflict_iff` | Exact |
+| §4.1, a COF consensus implementation satisfies COF termination | `cof_implementation_cofTermination` | Exact |
+| §4.2, valency passes to descendants | `valent_descendant` | Exact |
+| Lemma 3 | `lemma3` | Stronger: uses only Validity |
+| Lemma 4 | `lemma4` | Stronger: uses only Validity and COF termination |
+| Lemma 5 | `lemma5` | Stronger: uses only COF termination |
+| Theorem 6 | `theorem6`, `theorem6_of_three`, `theorem6_strict` | Stronger: weaker liveness hypothesis; any process type with three members |
+| Corollary 7 | `corollary7`, `corollary7_of_three` | Stronger: one implementation per object suffices, with types in any universe |
+
+[`MODEL.md`](MODEL.md#differences-from-the-paper) explains each difference.
+
+## Findings
+
+Every finding of the audits of this development is resolved.
+
+| Finding | Resolution |
 |---|---|
-| Sequential objects and response-sensitive conflict | Matches |
-| Trace-level COF definition | Matches for the single-object abstraction |
-| COF = OF when all operations conflict | Matches |
-| COF = WF when no operations conflict | Matches |
-| Three-process COF-consensus impossibility | Substantively verified |
-| Full universal-construction corollary | **Not exactly formalized** |
-| Two-process implementability claim | **Not formalized** |
-| Absence of `sorry` in current sources | Verified |
-| Build and axiom audit | Passes, with an enforcement weakness |
+| Lemma 5 was stated for any bivalent configuration; without reachability it is false | The manuscript now states it for `C` with `I ⇝ C`; `COF/Checks/Lemma5Reachability.lean` gives the counterexample |
+| Lemma 3's proof invoked COF termination for arbitrary finite executions | Removed from the manuscript; the argument never needed it |
+| Corollary 7 was proved only for a single-shot fragment of universality | Proved in full: `COFUniversal`, with Herlihy–Wing linearizability and Definition 2 |
+| The main theorems assumed decidable equality of processes and registers | Removed; the model decides equality classically |
+| A `sorry` outside the pinned theorems did not fail the build | Warnings are errors, and every declaration's axioms are checked |
+| The documentation claimed a strict separation of COF and wait-free termination without proof | Proved: `COF/Checks/Separation.lean` |
+| Non-vacuity of the multi-shot notions was checked for one process only | A three-process witness: `COF/Checks/NonVacuity.lean` |
+| `COFUniversal` required implementation types in `Type` | They may now live in any universe |
+| The documentation described earlier versions of the code and of the paper | Rewritten |
 
-### What is solid
+## What remains trusted
 
-- The main result in [Impossibility.lean](/Users/gtoyos/Downloads/COF/COF/Impossibility.lean:85) rules out consensus safety plus COF termination for any process type containing three distinct processes.
-- Agreement and validity are explicitly defined in [Valency.lean](/Users/gtoyos/Downloads/COF/COF/Valency.lean:23).
-- There is no fairness, synchrony, crash bound, finiteness of memory/state, or imported FLP impossibility assumption.
-- The atomic read/write argument is proved directly in [Commutation.lean](/Users/gtoyos/Downloads/COF/COF/SharedMemory/Commutation.lean:22).
-- The entire project builds successfully: 536 jobs completed. The only diagnostic was a dependency deprecation warning.
-- I found no `sorry`, `admit`, custom `axiom`, `opaque`, `unsafe`, or `native_decide` in the project Lean sources.
-- The headline results depend only on Lean’s standard `propext`, `Classical.choice`, and `Quot.sound`, as checked in [Audit.lean](/Users/gtoyos/Downloads/COF/COF/Audit.lean:6).
+- **The definitions.** A formalization can only be as faithful as its definitions. Each quotes the
+  paper, `MODEL.md` explains each modelling choice, the checks test the definitions on examples,
+  and `COF/Checks/Audit.lean` records their exact text. They were compared with the paper by hand.
+- **Lean's kernel and Mathlib.**
+- **The two-process hypothesis**, for the threshold theorem only.
 
-### Publication blockers
+## Reproducing
 
-1. **Corollary 7 is not stated in its paper form.**  
-   Lean proves `¬ BinaryUniversal P`, where `BinaryUniversal`, `Linearizes`, and `ObjectCOF` are weakened, single-shot fragments in [Universal.lean](/Users/gtoyos/Downloads/COF/COF/Universal.lean:45). There is no formal definition of a full universal construction, repeated histories, real-time ordering, or a theorem deriving `BinaryUniversal` from that full notion. The repository itself acknowledges this at [README.md](/Users/gtoyos/Downloads/COF/README.md:73). The reasoning is plausible, but the paper’s exact corollary is not machine-checked.
+```sh
+lake build
+```
 
-2. **The paper’s two-process result is absent.**  
-   The paper explicitly states that COF consensus is implementable with two processes. The formalization does not establish this, as acknowledged at [README.md](/Users/gtoyos/Downloads/COF/README.md:81). Therefore the formalization does not cover every stated result.
-
-3. **The paper still contains a proof gap repaired only in Lean.**  
-   The paper says both active processes must complete in the constructed infinite execution. The bivalence construction does not ensure both are scheduled infinitely often. Lean correctly proves that at least one is scheduled infinitely often and uses that process in [Impossibility.lean](/Users/gtoyos/Downloads/COF/COF/Impossibility.lean:16). The paper should be amended before publication.
-
-4. **The “any `sorry` fails the build” claim is false.**  
-   A Lean declaration containing `sorry` exits successfully with a warning under the present configuration. The axiom guards catch admissions only when they flow into the selected headline results. A `sorry` in an unaudited declaration can pass CI. The claim at [README.md](/Users/gtoyos/Downloads/COF/README.md:23) and [MODEL.md](/Users/gtoyos/Downloads/COF/MODEL.md:369) needs either correction or enforcement through warnings-as-errors plus broader auditing.
-
-5. **The formal liveness statement is intentionally not identical.**  
-   [COFTermination](/Users/gtoyos/Downloads/COF/COF/Termination.lean:19) counts scheduler steps even after an operation has completed. This is a weaker liveness hypothesis, so the resulting impossibility theorem is mathematically stronger, but it still violates the requested “no difference at all” standard. The trace bridge partially addresses this, although its valid-trace class directly includes executions rebased at arbitrary reachable configurations rather than formally proving equivalence with the paper’s initial executions.
-
-6. **There is a small extra formal typeclass assumption.**  
-   The main declarations require decidable equality for register identifiers. This is classically eliminable and not a substantive computability restriction, but it is nevertheless an explicit Lean hypothesis absent from the paper’s theorem statement.
-
-7. **The paper cannot currently be published from the repository.**  
-   The README links to `short_versionv2.tex`, but the LaTeX source, PDF, bibliography, and class files are all ignored and untracked. A repository release would therefore contain broken paper links and would not reproduce the report.
-
-### Bottom line
-
-The **central impossibility argument is in strong shape and appears sound**. The project is not yet suitable for claiming an exact, complete formal verification of the attached paper. Publication should wait until the full universal-construction statement is represented or the claims are narrowed, the two-process statement is either formalized or explicitly excluded from the verified claims, the paper’s scheduling argument is repaired, and CI genuinely rejects all admissions.
-
-- Prepare publication fixes
-- Formalize the full corollary
-- Draft an audit report
+This builds the development and every check. In particular, `COF/Checks/Audit.lean` fails the
+build if any declaration depends on an axiom other than `propext`, `Classical.choice` and
+`Quot.sound`, or if the statement of a result of `COF/Paper.lean`, or a definition it is built
+from, changes. When a change is intended, `#guard_msgs` prints the new text, which then replaces the
+recorded one.
