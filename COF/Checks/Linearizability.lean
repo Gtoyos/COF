@@ -98,13 +98,7 @@ theorem pending_write_takes_effect : COF.Linearizable reg [w1p, r1] := by
   refine ⟨[(w1p, none), (r1, some 1)], ?_, ?_, ?_, ?_, ?_⟩
   · simp [w1p, r1]
   · simp
-  · intro a ha r t h
-    rcases List.mem_cons.mp ha with rfl | ha
-    · simp [w1p] at h
-    · rw [List.mem_singleton.mp ha] at h ⊢
-      simp only [r1, Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      simp
+  · simp [w1p, r1]
   · simp [Object.Legal, reg, w1p, r1]
   · intro x y hxy r t _
     obtain ⟨rfl, rfl⟩ := pair_sublist hxy
@@ -112,14 +106,7 @@ theorem pending_write_takes_effect : COF.Linearizable reg [w1p, r1] := by
 
 /-- **Accepted**: a pending write may be dropped, so the read may still return `0`. -/
 theorem pending_write_dropped : COF.Linearizable reg [w1p, r0'] := by
-  refine ⟨[(r0', some 0)], by simp, by simp, ?_, ?_, ?_⟩
-  · intro a ha r t h
-    rcases List.mem_cons.mp ha with rfl | ha
-    · simp [w1p] at h
-    · rw [List.mem_singleton.mp ha] at h ⊢
-      simp only [r0', Option.some.injEq, Prod.mk.injEq] at h
-      obtain ⟨rfl, -⟩ := h
-      simp
+  refine ⟨[(r0', some 0)], by simp, by simp, by simp [w1p, r0'], ?_, ?_⟩
   · simp [Object.Legal, reg, r0']
   · intro x y hxy; exact (single_no_pair hxy).elim
 

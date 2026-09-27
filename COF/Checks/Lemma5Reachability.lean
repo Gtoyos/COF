@@ -113,8 +113,6 @@ def Inv2 (d : Config (Fin 3) Bool Bool St) : Prop :=
     (d.proc 1).state = .A1) ∧
   (d.proc 1).decision ≠ some false
 
-theorem ne10 : (1 : Fin 3) ≠ 0 := by decide
-theorem ne20 : (2 : Fin 3) ≠ 0 := by decide
 theorem ne12 : (1 : Fin 3) ≠ 2 := by decide
 theorem ne21 : (2 : Fin 3) ≠ 1 := by decide
 theorem ne01 : (0 : Fin 3) ≠ 1 := by decide

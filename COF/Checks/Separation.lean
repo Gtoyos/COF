@@ -88,10 +88,7 @@ theorem next_scheduled (input : Fin 2 → Bool) (σ : ℕ → Fin 2) {p : Fin 2}
     ∃ k, t ≤ k ∧ σ k = p ∧
       (alg.execution (alg.initial input) σ k).proc p =
         (alg.execution (alg.initial input) σ t).proc p := by
-  classical
-  have h : ∃ k, t ≤ k ∧ σ k = p := by
-    obtain ⟨k, hk, hkp⟩ := hinf t
-    exact ⟨k, hk, hkp⟩
+  have h : ∃ k, t ≤ k ∧ σ k = p := hinf t
   exact ⟨Nat.find h, (Nat.find_spec h).1, (Nat.find_spec h).2,
     alg.execution_proc_of_unscheduled_between _ σ (Nat.find_spec h).1
       fun m h₁ h₂ h₃ => Nat.find_min h h₂ ⟨h₁, h₃⟩⟩
@@ -146,9 +143,6 @@ def Phase (d : Config (Fin 2) Unit (Option Bool) (Bool × Bool)) (ph : ℕ) : Pr
   | 2 => (d.proc 0).state.2 = true ∧ (d.proc 1).state.2 = true ∧ d.memory () = some true
   | _ => (d.proc 0).state.2 = false ∧ (d.proc 1).state.2 = true ∧ d.memory () = some true
 
-theorem ne01 : (0 : Fin 2) ≠ 1 := by decide
-theorem ne10 : (1 : Fin 2) ≠ 0 := by decide
-
 theorem alternation_phase :
     ∀ t, Phase (alg.execution (alg.initial inputs) alternation t) (t % 4) := by
   intro t
@@ -160,51 +154,21 @@ theorem alternation_phase :
     have h4 : t % 4 = 0 ∨ t % 4 = 1 ∨ t % 4 = 2 ∨ t % 4 = 3 := by omega
     rcases h4 with h | h | h | h <;> rw [h] at hph
     · -- phase 0: process `0` writes `0`
-      have ha : alternation t = 0 := by simp [alternation]; omega
-      have h' : (t + 1) % 4 = 1 := by omega
-      rw [ha, h']
       obtain ⟨hp0, hp1⟩ := hph
-      refine ⟨?_, ?_, ?_, ?_, ?_⟩
-      · rw [step_self, hp0]; simpa using hd0
-      · rw [alg.step_local_other _ ne10]; exact hs1
-      · rw [step_self, hp0]; simpa using hs0
-      · rw [step_self, hp0]; rfl
-      · rw [alg.step_local_other _ ne10]; exact hp1
+      rw [show alternation t = 0 by simp [alternation]; omega, show (t + 1) % 4 = 1 by omega]
+      simp [Phase, step_self, hp0, hp1, hd0, hs0, hs1]
     · -- phase 1: process `1` writes `1`
-      have ha : alternation t = 1 := by simp [alternation]; omega
-      have h' : (t + 1) % 4 = 2 := by omega
-      rw [ha, h']
       obtain ⟨hp0, hp1⟩ := hph
-      refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
-      · rw [alg.step_local_other _ ne01]; exact hd0
-      · rw [step_self, hp1]; simpa using hs1
-      · rw [alg.step_local_other _ ne01]; exact hs0
-      · rw [alg.step_local_other _ ne01]; exact hp0
-      · rw [step_self, hp1]; rfl
-      · rw [step_memory, hp1, hs1]; rfl
+      rw [show alternation t = 1 by simp [alternation]; omega, show (t + 1) % 4 = 2 by omega]
+      simp [Phase, step_self, step_memory, hp0, hp1, hd0, hs0, hs1]
     · -- phase 2: process `0` reads `1`, and does not decide
-      have ha : alternation t = 0 := by simp [alternation]; omega
-      have h' : (t + 1) % 4 = 3 := by omega
-      rw [ha, h']
       obtain ⟨hp0, hp1, hm⟩ := hph
-      refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
-      · rw [step_self, hp0, hm, hs0, hd0]; simp
-      · rw [alg.step_local_other _ ne10]; exact hs1
-      · rw [step_self, hp0]; simpa using hs0
-      · rw [step_self, hp0]; rfl
-      · rw [alg.step_local_other _ ne10]; exact hp1
-      · rw [step_memory, hp0]; exact hm
+      rw [show alternation t = 0 by simp [alternation]; omega, show (t + 1) % 4 = 3 by omega]
+      simp [Phase, step_self, step_memory, hp0, hp1, hm, hd0, hs0, hs1]
     · -- phase 3: process `1` reads `1` (and decides); process `0` is untouched
-      have ha : alternation t = 1 := by simp [alternation]; omega
-      have h' : (t + 1) % 4 = 0 := by omega
-      rw [ha, h']
-      obtain ⟨hp0, hp1, hm⟩ := hph
-      refine ⟨?_, ?_, ?_, ?_, ?_⟩
-      · rw [alg.step_local_other _ ne01]; exact hd0
-      · rw [step_self, hp1]; simpa using hs1
-      · rw [alg.step_local_other _ ne01]; exact hs0
-      · rw [alg.step_local_other _ ne01]; exact hp0
-      · rw [step_self, hp1]; rfl
+      obtain ⟨hp0, hp1, -⟩ := hph
+      rw [show alternation t = 1 by simp [alternation]; omega, show (t + 1) % 4 = 0 by omega]
+      simp [Phase, step_self, hp0, hp1, hd0, hs0, hs1]
 
 theorem alg_not_wfTermination : ¬ alg.WFTermination := by
   intro h
