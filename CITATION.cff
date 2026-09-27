@@ -1,0 +1,43 @@
+cff-version: 1.2.0
+message: >-
+  If you use this Lean formalization, please cite it as software. If you
+  refer to the results it formalizes, please cite the paper below
+  (see "preferred-citation").
+title: "Pending Conflicts Make Progress Impossible: a Lean formalization"
+type: software
+authors:
+  - given-names: Petr
+    family-names: Kuznetsov
+  - given-names: Pierre
+    family-names: Sutra
+  - given-names: Guillermo
+    family-names: Toyos-Marfurt
+license: CC-BY-4.0
+date-released: "2026-09-27"
+keywords:
+  - Lean
+  - formal verification
+  - distributed computing
+  - shared memory
+  - commutativity
+preferred-citation:
+  type: article
+  title: "Pending conflicts make progress impossible"
+  authors:
+    - given-names: Petr
+      family-names: Kuznetsov
+    - given-names: Pierre
+      family-names: Sutra
+    - given-names: Guillermo
+      family-names: Toyos-Marfurt
+  journal: "Information Processing Letters"
+  volume: 196
+  pages: "106668"
+  year: 2027
+  issn: "0020-0190"
+  doi: "10.1016/j.ipl.2026.106668"
+  url: "https://www.sciencedirect.com/science/article/pii/S0020019026000499"
+  keywords:
+    - Distributed computing
+    - Shared memory
+    - Commutativity
