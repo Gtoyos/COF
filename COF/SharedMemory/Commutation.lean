@@ -1,24 +1,30 @@
-import COF.SharedMemory.Model
+import COF.SharedMemory.Algorithm
 
-/-! The read/write case analysis used in both critical-configuration arguments. -/
+/-!
+# Two steps of distinct processes: commute, or one is invisible
+
+The read/write case analysis behind both critical-configuration arguments of the paper (the proofs
+of Lemmas 4 and 5). It is the only place where "atomic read/write register" does real work.
+-/
 namespace COF.SharedMemory.Algorithm
 variable {P R V S : Type*}
 variable (a : Algorithm P R V S)
 
 /-- For any two distinct processes `p` and `q`, one of three things happens:
 
-1. their steps commute outright; or
-2. `p`'s step is *erased* — running `p` then `q` is indistinguishable from running `q`
-   alone, to every process except `p` itself; or
+1. their steps commute; or
+2. `p`'s step is *erased*: running `p` then `q` is indistinguishable from running `q` alone, to
+   every process except `p` itself; or
 3. symmetrically, `q`'s step is erased.
 
-The observer set in cases 2 and 3 excludes the process whose step was erased, because
-that process does see its own step. An argument that needs a witness therefore needs a
-*third* process, which is why the impossibility requires three and not two.
+A step is erased when it is a read, which leaves memory unchanged, or a write that the other
+process's write to the same register overwrites. The process whose step was erased still sees it,
+so an argument that uses cases 2 and 3 needs another observer. In Lemma 5 the two processes
+observe for each other. In Lemma 4 the moved step is `p₀`'s, and `p₀` does not count for valency,
+so the observer is the third process `p₂`: this is where the proof needs three processes.
 
-This is the only place where "atomic read/write register" does real work: the statement
-is false for read-modify-write primitives such as compare-and-swap, whose steps neither
-commute nor vanish. -/
+The statement is false for read-modify-write primitives such as compare-and-swap, whose steps
+neither commute nor vanish. -/
 theorem commutation_or_erasure (c : Config P R V S) {p q : P} (hne : p ≠ q) :
     a.step (a.step c p) q = a.step (a.step c q) p ∨
     Indist {r | r ≠ p} (a.step (a.step c p) q) (a.step c q) ∨

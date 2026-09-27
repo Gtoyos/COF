@@ -8,13 +8,20 @@ pp.unicode.fun = true # pretty-prints `fun a ↦ b`
 relaxedAutoImplicit = false
 weak.linter.mathlibStandardSet = true
 maxSynthPendingDepth = 3
+# Every warning fails the build. In particular, so does a `sorry` anywhere in the development.
+warningAsError = true
+# Two Mathlib linters only fire under `warningAsError`, and do not apply to this project: the
+# `#`-command linter (the audit relies on `#check`, `#print` and `#guard_msgs`) and the
+# Mathlib copyright-header linter.
+weak.linter.hashCommand = false
+weak.linter.style.header = false
 
 [[require]]
 name = "mathlib"
 scope = "leanprover-community"
 rev = "v4.35.0-rc2"
 
-
+# `COF.*` is the module `COF` and every module below it, checks included.
 [[lean_lib]]
 name = "COF"
-globs = ["COF", "COF.Audit", "COF.NonVacuity"]
+globs = ["COF.*"]

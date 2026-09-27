@@ -1,75 +1,54 @@
-import COF
+import COF.Paper
 
-/-! Non-vacuity checks for the impossibility result.
+/-!
+# The hypotheses of the impossibility results are satisfiable
 
-These make precise two claims that the impossibility theorem would be empty
-without:
+An impossibility theorem is empty if its hypotheses cannot hold at all. This file shows that each
+hypothesis is satisfiable on its own terms:
 
-1. `consensus_satisfiable` — `Safe ∧ COFTermination` is satisfiable, so
-   `no_cof_consensus` is not vacuously true because its hypotheses contradict
-   each other. The witness is a one-process system in which the process decides
-   its own input.
+* **COF consensus with one process** (`cofConsensus_satisfiable`). Validity, Agreement and COF
+  termination hold together for the trivial algorithm `decideOwnInput`, which really decides
+  (`decideOwnInput_decides`). Theorem 6 needs its three processes.
+* **A COF universal construction with one process** (`cofUniversal_unit`). The process runs the
+  sequential specification itself, so every object has a linearizable, wait-free implementation.
+  Corollary 7 needs its three processes.
+* **A linearizable, COF implementation with three processes** (`eager_linearizable_cof`), of the
+  object with one state. So linearizability and COF remain satisfiable when several processes
+  interleave: Corollary 7 rules out COF universal constructions only because every object,
+  consensus included, must be implemented.
+-/
 
-2. `alt_not_homogeneous` — the COF liveness hypothesis genuinely exempts some
-   schedules, so `COFTermination` is strictly weaker than wait-free termination
-   and the impossibility is not a restatement of FLP.
+namespace COF.Checks
+open SharedMemory SharedMemory.Implementation
 
-See `MODEL.md`. -/
+/-- The returned instances of a history, in order, form a sublist of it. -/
+theorem filterMap_returned_sublist {P O Resp : Type*} (H : History P O Resp) :
+    ((H.filterMap fun a => a.returned.map fun x => (a, x.1)).map Prod.fst).Sublist H := by
+  induction H with
+  | nil => simp
+  | cons a H ih =>
+    cases h : a.returned with
+    | none => simpa [h] using ih.cons a
+    | some x => simpa [h] using ih.cons_cons a
 
-namespace COF.NonVacuity
-open COF COF.SharedMemory
+/-! ## COF consensus with one process -/
 
-/-- One process, one register, trivial values, local state = own proposal, decided at the
-first step. This is the trivial algorithm `Algorithm.decideOwnInput` (`COF/Tightness.lean`),
-which is proved safe and COF-terminating for every system of at most one process. -/
-abbrev solo : Algorithm Unit Unit Unit Bool := Algorithm.decideOwnInput Unit
+/-- `decideOwnInput` on a single process is a COF consensus algorithm. -/
+theorem cofConsensus_satisfiable : ∃ a : Algorithm Unit Unit Unit Bool, a.COFConsensus :=
+  ⟨Algorithm.decideOwnInput Unit, Algorithm.decideOwnInput_cofConsensus⟩
 
-/-- **The hypotheses of the impossibility theorem are jointly satisfiable.** -/
-theorem consensus_satisfiable : ∃ a : Algorithm Unit Unit Unit Bool, a.Consensus :=
-  ⟨solo, Algorithm.decideOwnInput_consensus⟩
-
-/-- Sanity check that decisions really are reachable in this witness, i.e. `Safe`
-is not satisfied merely because nothing ever decides. -/
-theorem solo_decides :
-    ((solo.run (solo.initial (fun _ => true)) [()]).proc ()).decision = some true := by
+/-- The witness takes decisions: validity and agreement do not hold merely because nothing is
+ever decided. -/
+theorem decideOwnInput_decides :
+    (((Algorithm.decideOwnInput Unit).run
+      ((Algorithm.decideOwnInput Unit).initial (fun _ => true)) [()]).proc ()).decision =
+      some true := by
   simp [Algorithm.initial]
   rfl
 
-
-/-- Two processes with opposite proposals. -/
-def two : Bool → Bool := id
-
-/-- The alternating schedule. -/
-def alt : ℕ → Bool := fun k => k % 2 == 0
-
-/-- The alternating schedule is *not* eventually homogeneous, hence
-`COFTermination` imposes no requirement whatsoever on it, while wait-free
-termination would. -/
-theorem alt_not_homogeneous : ¬ ∃ N v, ∀ k ≥ N, two (alt k) = v := by
-  rintro ⟨N, v, h⟩
-  have h1 := h (2 * N) (by omega)
-  have h2 := h (2 * N + 1) (by omega)
-  have m1 : (2 * N) % 2 = 0 := by omega
-  have m2 : (2 * N + 1) % 2 = 1 := by omega
-  rw [show alt (2 * N) = true by simp [alt, m1]] at h1
-  rw [show alt (2 * N + 1) = false by simp [alt, m2]] at h2
-  cases v <;> simp [two] at h1 h2
-
-/-- Restated: for every algorithm, `COFTermination` says nothing about the
-alternating schedule, so it cannot entail termination under all schedules. -/
-theorem cofTermination_silent_on_alt
-    {R V S : Type} (a : Algorithm Bool R V S)
-    (_ : a.COFTermination) :
-    ¬ ∃ N v, ∀ k ≥ N, two (alt k) = v := alt_not_homogeneous
-
-/-! ### The full universal-construction notions are satisfiable
-
-With a single process, a COF universal construction exists: the process keeps the object's state
-itself and answers each operation at its first step. So `COFUniversal` is not refuted by its
-definitions alone, and `no_cofUniversal` really needs its three processes. -/
+/-! ## A COF universal construction with one process -/
 
 section OneProcess
-open SharedMemory.Implementation
 
 variable {Q O Resp : Type} (obj : Object Q O Resp)
 
@@ -254,16 +233,6 @@ theorem seqInv_recordRun : ∀ (acts : List (Action Unit O))
     have := seqInv_recordRun as _ _ _ (seqInv_act obj h a)
     simpa [Implementation.run, recordRun, Nat.add_assoc, Nat.add_comm 1] using this
 
-/-- The returned instances of a history, in order, form a sublist of it. -/
-theorem filterMap_returned_sublist (H : History Unit O Resp) :
-    ((H.filterMap fun a => a.returned.map fun x => (a, x.1)).map Prod.fst).Sublist H := by
-  induction H with
-  | nil => simp
-  | cons a H ih =>
-    cases h : a.returned with
-    | none => simpa [h] using ih.cons a
-    | some x => simpa [h] using ih.cons_cons a
-
 /-- The one-process construction is linearizable: its history is sequential, and the
 linearization is the list of returned operations in order. -/
 theorem seqImpl_linearizable : (seqImpl obj).Linearizable obj := by
@@ -378,11 +347,181 @@ theorem seqImpl_cof (conflict : O → O → Prop) :
     · exact ⟨_, hk⟩
     · simp [hidle _ (Nat.le_max_left _ _)] at hb
 
-/-- **The full universal-construction notions are satisfiable.** With one process, a COF
-universal construction exists: the process runs the sequential specification itself. -/
-theorem cofUniversal_unit : COFUniversal Unit := fun _ _ _ obj =>
+/-- **A COF universal construction exists for one process**: the process runs the sequential
+specification itself. -/
+theorem cofUniversal_unit : COFUniversal.{0, 0, 0, 0} Unit := fun _ _ _ obj =>
   ⟨Unit, Unit, _, seqImpl obj, seqImpl_linearizable obj, seqImpl_cof obj _⟩
 
 end OneProcess
 
-end COF.NonVacuity
+/-! ## A linearizable, COF implementation with three processes -/
+
+section ThreeProcesses
+
+/-- The object with one state, one operation and one response. -/
+def unitObj : Object Unit Unit Unit := ⟨(), fun _ _ => ((), ())⟩
+
+/-- Every process answers at its first step. -/
+def eager : Implementation (Fin 3) Unit Unit Unit Unit Unit where
+  initialMemory _ := ()
+  initialState _ := ()
+  invoke _ _ s := s
+  instruction _ _ := .write () () ((), some ())
+
+/-! ### Linearizability -/
+
+/-- Invariant of recorded histories at time `t`: records in strictly increasing invocation
+order, all in the past, each returned after it was invoked. -/
+def HInv (H : History (Fin 3) Unit Unit) (t : ℕ) : Prop :=
+  H.Pairwise (fun a b => a.invokedAt < b.invokedAt) ∧
+  ∀ a ∈ H, a.invokedAt < t ∧ ∀ r t', a.returned = some (r, t') → a.invokedAt < t' ∧ t' < t
+
+theorem hinv_record {H : History (Fin 3) Unit Unit} {t : ℕ} (h : HInv H t)
+    (e : Option (Event (Fin 3) Unit Unit)) : HInv (H.record t e) (t + 1) := by
+  obtain ⟨hpw, htime⟩ := h
+  have hlater : ∀ a ∈ H, a.invokedAt < t + 1 ∧
+      ∀ r t', a.returned = some (r, t') → a.invokedAt < t' ∧ t' < t + 1 := fun a ha =>
+    ⟨by have := (htime a ha).1; omega, fun r t' hr => by have := (htime a ha).2 r t' hr; omega⟩
+  rcases e with _ | ⟨p, o⟩ | ⟨p, r⟩
+  · exact ⟨hpw, hlater⟩
+  · refine ⟨List.pairwise_append.mpr ⟨hpw, List.pairwise_singleton _ _, ?_⟩, ?_⟩
+    · intro a ha b hb
+      rw [List.mem_singleton.mp hb]
+      exact (htime a ha).1
+    · intro a ha
+      rcases List.mem_append.mp ha with ha | ha
+      · exact hlater a ha
+      · rw [List.mem_singleton.mp ha]; simp
+  · classical
+    simp only [History.record]
+    refine ⟨?_, ?_⟩
+    · refine List.pairwise_map.mpr (hpw.imp fun {a b} hab => ?_)
+      split <;> split <;> simpa using hab
+    · intro a' ha'
+      obtain ⟨a, ha, rfl⟩ := List.mem_map.mp ha'
+      split
+      · refine ⟨by have := (htime a ha).1; simp; omega, fun r' t' h => ?_⟩
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨-, rfl⟩ := h
+        exact ⟨(htime a ha).1, by omega⟩
+      · exact hlater a ha
+
+theorem hinv_recordRun : ∀ (acts : List (Action (Fin 3) Unit))
+    (c : ImplConfig (Fin 3) Unit Unit Unit Unit) (H : History (Fin 3) Unit Unit) (t : ℕ), HInv H t →
+    HInv (eager.recordRun t c H acts) (t + acts.length)
+  | [], _, _, _, h => h
+  | a :: as, c, H, t, h => by
+    have := hinv_recordRun as (eager.act c a) _ (t + 1) (hinv_record h (eager.event c a))
+    simpa [recordRun, Nat.add_assoc, Nat.add_comm 1] using this
+
+theorem legal_unit : ∀ L : List (Unit × Unit), unitObj.Legal () L
+  | [] => trivial
+  | _ :: L => ⟨rfl, legal_unit L⟩
+
+theorem eager_linearizable : eager.Linearizable unitObj := by
+  intro acts
+  obtain ⟨hpw, htime⟩ := hinv_recordRun acts eager.initial [] 0 ⟨List.Pairwise.nil, by simp⟩
+  refine ⟨(eager.history acts).filterMap fun a => a.returned.map fun x => (a, x.1),
+    ?_, ?_, ?_, legal_unit _, ?_⟩
+  · have hnd : (eager.history acts).Nodup := hpw.imp fun {a b} h hab => by subst hab; omega
+    exact hnd.sublist (filterMap_returned_sublist _)
+  · intro x hx
+    obtain ⟨a, ha, hax⟩ := List.mem_filterMap.mp hx
+    obtain ⟨y, -, rfl⟩ := Option.map_eq_some_iff.mp hax
+    exact ha
+  · intro a ha r t hr
+    exact List.mem_filterMap.mpr ⟨a, ha, by simp [hr]⟩
+  · intro x y hxy r t hy
+    have hsub := (hxy.map Prod.fst).trans (filterMap_returned_sublist _)
+    have hlt := List.rel_of_pairwise_cons (hpw.sublist hsub) (List.mem_singleton_self _)
+    have := ((htime y.1 (hsub.subset (by simp))).2 r t hy).1
+    omega
+
+/-! ### Conflict-obstruction freedom (indeed wait freedom) -/
+
+theorem act_other {c : ImplConfig (Fin 3) Unit Unit Unit Unit} {a : Action (Fin 3) Unit}
+    {p : Fin 3} (hp : ∀ o, a ≠ .invoke p o) (hs : a ≠ .step p) :
+    (eager.act c a).proc p = c.proc p := by
+  classical
+  cases a with
+  | invoke q o =>
+    have hq : p ≠ q := fun h => hp o (by rw [h])
+    cases h : (c.proc q).pending <;> simp [act, h, Function.update, hq]
+  | step q =>
+    have hq : p ≠ q := fun h => hs (by rw [h])
+    cases h : (c.proc q).pending <;> simp [act, h, Function.update, hq]
+
+/-- A step of a busy process returns its operation. -/
+theorem step_done (c : ImplConfig (Fin 3) Unit Unit Unit Unit) (p : Fin 3) {o : Unit}
+    (h : (c.proc p).pending = some o) :
+    ((eager.act c (.step p)).proc p).done = (c.proc p).done + 1 := by
+  simp only [act, h]
+  simp [stepResult, eager, ProcState.after, Function.update]
+
+/-- After `p` is invoked at `t` with `k` returned operations, it stays pending with `k`
+returned operations until its operation returns. -/
+theorem after_invoke (α : ℕ → Action (Fin 3) Unit) {p : Fin 3} {t k : ℕ} {o : Unit}
+    (hat : α t = .invoke p o)
+    (hpt : ((eager.execution eager.initial α t).proc p).pending = none)
+    (hdt : ((eager.execution eager.initial α t).proc p).done = k) :
+    ∀ m, t < m → k < ((eager.execution eager.initial α m).proc p).done ∨
+      (((eager.execution eager.initial α m).proc p).pending.isSome ∧
+        ((eager.execution eager.initial α m).proc p).done = k) := by
+  classical
+  intro m hm
+  induction m, hm using Nat.le_induction with
+  | base =>
+    right
+    change ((eager.act _ (α t)).proc p).pending.isSome ∧ ((eager.act _ (α t)).proc p).done = k
+    rw [hat]
+    simp [act, hpt, hdt]
+  | succ m _ ih =>
+    change k < ((eager.act _ (α m)).proc p).done ∨
+      (((eager.act _ (α m)).proc p).pending.isSome ∧ ((eager.act _ (α m)).proc p).done = k)
+    rcases ih with hk | ⟨hb, hd⟩
+    · exact Or.inl (lt_of_lt_of_le hk (eager.done_le_act _ _ _))
+    · obtain ⟨o', ho'⟩ := Option.isSome_iff_exists.mp hb
+      by_cases hs : α m = .step p
+      · left
+        rw [hs, step_done _ _ ho', hd]
+        omega
+      · by_cases hi : ∃ o, α m = .invoke p o
+        · obtain ⟨o, ho⟩ := hi
+          right
+          rw [ho]
+          simp only [act, ho']
+          exact ⟨by simp, hd⟩
+        · push Not at hi
+          right
+          rw [act_other hi hs]
+          exact ⟨hb, hd⟩
+
+theorem eager_waitFree : eager.WaitFree := by
+  rintro _ ⟨α, rfl⟩ ⟨p, k, o⟩ ⟨t, hat, hpt, hdt⟩ hcorr
+  dsimp only [trace, StepsAt] at hat hpt hdt hcorr ⊢
+  have key := after_invoke α hat hpt hdt
+  rcases hcorr with hsteps | ⟨N, hidle⟩
+  · obtain ⟨m, hm, hstep, hbusy⟩ := hsteps (t + 1)
+    rcases key m (by omega) with hk | ⟨hb, hd⟩
+    · exact ⟨m, hk⟩
+    · refine ⟨m + 1, ?_⟩
+      change k < ((eager.act _ (α m)).proc p).done
+      obtain ⟨o', ho'⟩ := Option.isSome_iff_exists.mp hb
+      rw [hstep, step_done _ _ ho']
+      omega
+  · rcases key (max N (t + 1)) (by omega) with hk | ⟨hb, -⟩
+    · exact ⟨_, hk⟩
+    · simp [hidle _ (Nat.le_max_left _ _)] at hb
+
+/-- **Non-vacuity with three processes**: linearizable and COF, for the one-state object. -/
+theorem eager_linearizable_cof :
+    eager.Linearizable unitObj ∧ eager.ConflictObstructionFree unitObj.Conflict :=
+  ⟨eager_linearizable, waitFree_imp_cof eager_waitFree⟩
+
+/-- The one-state object has no conflicts, so COF is exactly wait freedom here (paper §3). -/
+theorem unitObj_no_conflict (a b : Unit) : ¬ unitObj.Conflict a b := by
+  rintro ⟨s, h⟩; exact h ⟨rfl, rfl, rfl⟩
+
+end ThreeProcesses
+
+end COF.Checks
