@@ -16,20 +16,138 @@ hypothesis is satisfiable on its own terms:
   object with one state. So linearizability and COF remain satisfiable when several processes
   interleave: Corollary 7 rules out COF universal constructions only because every object,
   consensus included, must be implemented.
+
+Both implementations answer every operation at its first step. They are linearizable and
+wait-free by two sufficient conditions, proved first for any implementation
+(`isLinearization_returnedOps`, `waitFree_of_steps_return`).
 -/
 
 namespace COF.Checks
 open SharedMemory SharedMemory.Implementation
 
+/-! ## Two sufficient conditions, for any implementation -/
+
+section Sufficient
+variable {P R V S O Resp : Type*}
+
+/-- The returned instances of a history, in order, each with its response. -/
+def returnedOps (H : History P O Resp) : List (OpRecord P O Resp × Resp) :=
+  H.filterMap fun a => a.returned.map fun x => (a, x.1)
+
 /-- The returned instances of a history, in order, form a sublist of it. -/
-theorem filterMap_returned_sublist {P O Resp : Type*} (H : History P O Resp) :
-    ((H.filterMap fun a => a.returned.map fun x => (a, x.1)).map Prod.fst).Sublist H := by
+theorem returnedOps_sublist (H : History P O Resp) :
+    ((returnedOps H).map Prod.fst).Sublist H := by
   induction H with
-  | nil => simp
+  | nil => simp [returnedOps]
   | cons a H ih =>
     cases h : a.returned with
-    | none => simpa [h] using ih.cons a
-    | some x => simpa [h] using ih.cons_cons a
+    | none => simpa [returnedOps, h] using ih.cons a
+    | some x => simpa [returnedOps, h] using ih.cons_cons a
+
+/-- **A sufficient condition for linearizability.** If the instances of a history are listed in
+increasing order of invocation, and each returns after it was invoked, then its returned
+instances, in that order and with their responses, linearize it as soon as they are legal. -/
+theorem isLinearization_returnedOps {Q : Type*} {obj : Object Q O Resp} {H : History P O Resp}
+    (horder : H.Pairwise fun a b => a.invokedAt < b.invokedAt)
+    (hret : ∀ a ∈ H, ∀ r t, a.returned = some (r, t) → a.invokedAt < t)
+    (hlegal : obj.Legal obj.initial ((returnedOps H).map fun x => (x.1.op, x.2))) :
+    IsLinearization obj H (returnedOps H) where
+  nodup := by
+    have hnd : H.Nodup := horder.imp fun h hab => by subst hab; omega
+    exact hnd.sublist (returnedOps_sublist H)
+  subset x hx := by
+    obtain ⟨a, ha, hax⟩ := List.mem_filterMap.mp hx
+    obtain ⟨y, -, rfl⟩ := Option.map_eq_some_iff.mp hax
+    exact ha
+  complete a ha r t hr := List.mem_filterMap.mpr ⟨a, ha, by simp [hr]⟩
+  legal := hlegal
+  realTime x y hxy r t hy := by
+    -- `x` comes before `y` in the history, so it was invoked before `y`, which returned later.
+    have hsub := (hxy.map Prod.fst).trans (returnedOps_sublist H)
+    have hlt := List.rel_of_pairwise_cons (horder.sublist hsub) (List.mem_singleton_self _)
+    have := hret y.1 (hsub.subset (by simp)) r t hy
+    omega
+
+/-- An action of another process leaves `p` unchanged. -/
+theorem act_proc_other (I : Implementation P R V S O Resp) {c : ImplConfig P R V S O}
+    {a : Action P O} {p : P} (hi : ∀ o, a ≠ .invoke p o) (hs : a ≠ .step p) :
+    (I.act c a).proc p = c.proc p := by
+  cases a with
+  | invoke q o =>
+    have hq : p ≠ q := fun h => hi o (by rw [h])
+    cases h : (c.proc q).pending <;> simp [act, h, Function.update, hq]
+  | step q =>
+    have hq : p ≠ q := fun h => hs (by rw [h])
+    cases h : (c.proc q).pending <;> simp [act, h, Function.update, hq]
+
+/-- An action leaves a busy process `p` busy, unless it is a step of `p` that returns; then one
+more operation of `p` has returned. -/
+theorem act_busy (I : Implementation P R V S O Resp) {c : ImplConfig P R V S O} {p : P} {o : O}
+    (h : (c.proc p).pending = some o) (a : Action P O) :
+    (c.proc p).done < ((I.act c a).proc p).done ∨
+      (((I.act c a).proc p).pending.isSome ∧ ((I.act c a).proc p).done = (c.proc p).done) := by
+  by_cases hs : a = .step p
+  · -- A step of the operation: it returns, or it stays pending.
+    subst hs
+    obtain ⟨s, hs⟩ := I.stepResult_after c p o
+    simp only [act, h, Function.update_self, hs]
+    cases (I.stepResult c p o).2.2 <;> simp [ProcState.after]
+  · -- Invoking a busy process does nothing, and an action of another process leaves `p` alone.
+    right
+    by_cases hi : ∃ o', a = .invoke p o'
+    · obtain ⟨o', rfl⟩ := hi
+      simp [act, h]
+    · push Not at hi
+      simp [act_proc_other I hi hs, h]
+
+/-- An operation invoked on `p` at time `t`, when `k` operations of `p` have returned, stays
+pending until it returns: at every later time, more than `k` operations of `p` have returned, or
+`p` is still busy with `k` returned. -/
+theorem pending_until_returned (I : Implementation P R V S O Resp) (α : ℕ → Action P O)
+    {p : P} {t k : ℕ} {o : O} (hat : α t = .invoke p o)
+    (hpt : ((I.execution I.initial α t).proc p).pending = none)
+    (hdt : ((I.execution I.initial α t).proc p).done = k) :
+    ∀ m, t < m → k < ((I.execution I.initial α m).proc p).done ∨
+      (((I.execution I.initial α m).proc p).pending.isSome ∧
+        ((I.execution I.initial α m).proc p).done = k) := by
+  intro m hm
+  induction m, hm using Nat.le_induction with
+  | base =>
+    rw [execution_succ, hat]
+    simp [act, hpt, hdt]
+  | succ m _ ih =>
+    rw [execution_succ]
+    rcases ih with hk | ⟨hb, rfl⟩
+    · exact Or.inl (lt_of_lt_of_le hk (I.done_le_act _ _ _))
+    · obtain ⟨o', ho'⟩ := Option.isSome_iff_exists.mp hb
+      exact act_busy I ho' (α m)
+
+/-- **A sufficient condition for wait freedom.** If, in every execution, a step of a pending
+operation returns it, the implementation is wait-free. A correct process either takes another
+step, which returns its operation, or is eventually idle, which it is only once its operation has
+returned. -/
+theorem waitFree_of_steps_return (I : Implementation P R V S O Resp)
+    (h : ∀ α m p o, ((I.execution I.initial α m).proc p).pending = some o →
+      ((I.act (I.execution I.initial α m) (.step p)).proc p).done =
+        ((I.execution I.initial α m).proc p).done + 1) :
+    I.WaitFree := by
+  rintro _ ⟨α, rfl⟩ ⟨p, k, o⟩ ⟨t, hat, hpt, hdt⟩ hcorr
+  have key := pending_until_returned I α hat hpt hdt
+  rcases hcorr with hsteps | ⟨N, hidle⟩
+  · -- `p` steps at some time `m > t`; unless the operation has returned by then, it returns now.
+    obtain ⟨m, hm, hstep, -⟩ := hsteps (t + 1)
+    rcases key m (by omega) with hk | ⟨hb, hd⟩
+    · exact ⟨m, hk⟩
+    · obtain ⟨o', ho'⟩ := Option.isSome_iff_exists.mp hb
+      refine ⟨m + 1, ?_⟩
+      rw [execution_succ, hstep, h α m p o' ho', hd]
+      omega
+  · -- `p` is eventually idle, so it is not still busy with the operation.
+    rcases key (max N (t + 1)) (by omega) with hk | ⟨hb, -⟩
+    · exact ⟨_, hk⟩
+    · simp [hidle _ (Nat.le_max_left _ _)] at hb
+
+end Sufficient
 
 /-! ## COF consensus with one process -/
 
@@ -90,7 +208,7 @@ theorem Replays.snoc : ∀ {q : Q} {L : List (O × Resp)} {q' : Q}, Replays obj 
 
 /-- The operations of a history that have returned, with their responses, in order. -/
 def completedOps (H : History Unit O Resp) : List (O × Resp) :=
-  H.filterMap fun a => a.returned.map fun x => (a.op, x.1)
+  (returnedOps H).map fun x => (x.1.op, x.2)
 
 /-- The invariant of the one-process construction at time `t`. The automaton knows the pending
 operation; every record lies in the past; each record returned before the next was invoked; all
@@ -111,7 +229,7 @@ theorem seqImpl_invoke_idle (c : ImplConfig Unit Unit Unit (Q × Option O) O) (o
     (hp : (c.proc ()).pending = none) :
     (seqImpl obj).act c (.invoke () o) =
         ⟨c.memory, fun _ => ⟨((c.proc ()).state.1, some o), some o, (c.proc ()).done⟩⟩ ∧
-      (seqImpl obj (Resp := Resp)).event c (.invoke () o) = some (.inv () o) := by
+      (seqImpl obj).event c (.invoke () o) = some (.inv () o) := by
   refine ⟨?_, by simp [event, hp]⟩
   simp only [act, hp]
   congr 1
@@ -135,7 +253,7 @@ theorem seqImpl_step_busy (c : ImplConfig Unit Unit Unit (Q × Option O) O) {o :
   simp [stepResult, seqImpl, seqRespond, hs, ProcState.after]
 
 /-- The invariant holds initially, with an empty history. -/
-theorem seqInv_initial : SeqInv obj (seqImpl obj (Resp := Resp)).initial [] 0 := by
+theorem seqInv_initial : SeqInv obj (seqImpl obj).initial [] 0 := by
   refine ⟨rfl, by simp, List.Pairwise.nil, fun _ => by simp, fun o h => ?_, rfl⟩
   simp [initial] at h
 
@@ -149,7 +267,7 @@ theorem seqInv_act {c : ImplConfig Unit Unit Unit (Q × Option O) O} {H : Histor
     ⟨by have := (htime a ha).1; omega, fun r t' hr => by
       have := (htime a ha).2 r t' hr; omega⟩
   -- Actions that change nothing: invoking a busy process, or scheduling an idle one.
-  have hsame : ∀ a', (seqImpl obj).act c a' = c → (seqImpl obj (Resp := Resp)).event c a' = none →
+  have hsame : ∀ a', (seqImpl obj).act c a' = c → (seqImpl obj).event c a' = none →
       SeqInv obj ((seqImpl obj).act c a') (H.record t ((seqImpl obj).event c a')) (t + 1) := by
     intro a' hc he
     rw [hc, he]
@@ -177,7 +295,7 @@ theorem seqInv_act {c : ImplConfig Unit Unit Unit (Q × Option O) O} {H : Histor
         exact ⟨r, t', hrt, ((htime a ha).2 r t' hrt).2⟩
       · obtain rfl : o' = o := by simpa using h.symm
         exact ⟨H, t, rfl, hret⟩
-      · simpa [completedOps, List.filterMap_append] using hrep
+      · simpa [completedOps, returnedOps, List.filterMap_append] using hrep
   | step u =>
     cases hp : (c.proc ()).pending with
     | none => exact hsame _ (by simp [act, hp]) (by simp [event, hp])
@@ -213,15 +331,14 @@ theorem seqInv_act {c : ImplConfig Unit Unit Unit (Q × Option O) O} {H : Histor
         intro a ha b hb
         simp only [List.mem_singleton] at hb
         subst hb
-        obtain ⟨r, t', h1, h2⟩ := hcross a ha ⟨(), o, tp, none⟩ (List.mem_singleton_self _)
-        exact ⟨r, t', h1, h2⟩
+        exact hcross a ha ⟨(), o, tp, none⟩ (List.mem_singleton_self _)
       · simp only [List.mem_append, List.mem_singleton] at ha
         rcases ha with ha | rfl
         · exact hret a ha
         · rfl
       · have hrep' : Replays obj obj.initial (completedOps H') (c.proc ()).state.1 := by
-          simpa [completedOps, List.filterMap_append] using hrep
-        simpa [completedOps, List.filterMap_append] using hrep'.snoc o
+          simpa [completedOps, returnedOps, List.filterMap_append] using hrep
+        simpa [completedOps, returnedOps, List.filterMap_append] using hrep'.snoc o
 
 /-- The invariant holds along every finite execution, for the history it records. -/
 theorem seqInv_recordRun : ∀ (acts : List (Action Unit O))
@@ -237,120 +354,42 @@ theorem seqInv_recordRun : ∀ (acts : List (Action Unit O))
 linearization is the list of returned operations in order. -/
 theorem seqImpl_linearizable : (seqImpl obj).Linearizable obj := by
   intro acts
-  obtain ⟨-, htime, hpw, -, -, hrep⟩ :=
-    seqInv_recordRun obj acts _ [] 0 (seqInv_initial obj (Resp := Resp))
-  refine ⟨((seqImpl obj).history acts).filterMap fun a => a.returned.map fun x => (a, x.1),
-    ?_, ?_, ?_, ?_, ?_⟩
-  · have hnd : ((seqImpl obj).history acts).Nodup :=
-      hpw.imp_of_mem fun {a b} ha _ ⟨r, t', hr, hlt⟩ hab => by
-        subst hab
-        have := ((htime a ha).2 r t' hr).1
-        omega
-    exact hnd.sublist (filterMap_returned_sublist _)
-  · intro x hx
-    obtain ⟨a, ha, hax⟩ := List.mem_filterMap.mp hx
-    obtain ⟨y, -, rfl⟩ := Option.map_eq_some_iff.mp hax
-    exact ha
-  · intro a ha r t hr
-    exact List.mem_filterMap.mpr ⟨a, ha, by simp [hr]⟩
-  · have : (((seqImpl obj).history acts).filterMap fun a => a.returned.map fun x => (a, x.1)).map
-        (fun x => (x.1.op, x.2)) = completedOps ((seqImpl obj).history acts) := by
-      simp [completedOps, List.map_filterMap, Option.map_map, Function.comp_def]
-    rw [this]
-    exact hrep.legal
-  · intro x y hxy r t hy
-    have hsub := (hxy.map Prod.fst).trans (filterMap_returned_sublist _)
-    have hmem : ∀ z ∈ [x.1, y.1], z ∈ (seqImpl obj).history acts := fun z hz => hsub.subset hz
-    obtain ⟨r', t', hx', hlt⟩ := List.rel_of_pairwise_cons (hpw.sublist hsub)
-      (List.mem_singleton_self _)
-    have h1 := ((htime x.1 (hmem _ (by simp))).2 r' t' hx').1
-    have h2 := ((htime y.1 (hmem _ (by simp))).2 r t hy).1
+  obtain ⟨-, htime, hpw, -, -, hrep⟩ := seqInv_recordRun obj acts _ [] 0 (seqInv_initial obj)
+  refine ⟨_, isLinearization_returnedOps ?_ (fun a ha r t hr => ((htime a ha).2 r t hr).1)
+    hrep.legal⟩
+  -- Each record returned before the next was invoked, so they are in order of invocation.
+  exact hpw.imp_of_mem fun ha _ ⟨r, t', hr, hlt⟩ => by
+    have := ((htime _ ha).2 r t' hr).1
     omega
+
+/-- Every action preserves the fact that the automaton knows the pending operation. -/
+theorem seqImpl_act_state_pending (c : ImplConfig Unit Unit Unit (Q × Option O) O)
+    (h : (c.proc ()).state.2 = (c.proc ()).pending) (a : Action Unit O) :
+    (((seqImpl obj).act c a).proc ()).state.2 = (((seqImpl obj).act c a).proc ()).pending := by
+  rcases a with ⟨⟨⟩, o⟩ | ⟨⟨⟩⟩ <;> cases hp : (c.proc ()).pending
+  · rw [(seqImpl_invoke_idle obj c o hp).1]
+  · simpa [act, hp] using h
+  · simpa [act, hp] using h
+  · rw [(seqImpl_step_busy obj c hp (h.trans hp)).1]
 
 /-- Along any execution, the automaton knows the pending operation. -/
 theorem seqImpl_state_pending (α : ℕ → Action Unit O) : ∀ m,
-    (((seqImpl obj (Resp := Resp)).execution (seqImpl obj).initial α m).proc ()).state.2 =
-      (((seqImpl obj (Resp := Resp)).execution (seqImpl obj).initial α m).proc ()).pending
+    (((seqImpl obj).execution (seqImpl obj).initial α m).proc ()).state.2 =
+      (((seqImpl obj).execution (seqImpl obj).initial α m).proc ()).pending
   | 0 => rfl
-  | m + 1 => by
-    have ih := seqImpl_state_pending α m
-    change ((((seqImpl obj).act (Implementation.execution _ _ α m) (α m)).proc ()).state.2 =
-      (((seqImpl obj).act (Implementation.execution _ _ α m) (α m)).proc ()).pending)
-    cases α m with
-    | invoke u o =>
-      cases u
-      cases hp : (((seqImpl obj (Resp := Resp)).execution (seqImpl obj).initial α m).proc
-          ()).pending with
-      | none =>
-        rw [(seqImpl_invoke_idle obj _ o hp).1]
-      | some _ => simpa [act, hp] using ih
-    | step u =>
-      cases u
-      cases hp : (((seqImpl obj (Resp := Resp)).execution (seqImpl obj).initial α m).proc
-          ()).pending with
-      | none => simpa [act, hp] using ih
-      | some o => rw [(seqImpl_step_busy obj _ hp (ih.trans hp)).1]
+  | m + 1 => seqImpl_act_state_pending obj _ (seqImpl_state_pending α m) (α m)
 
-/-- After an invocation at time `t`, the operation stays pending until the process's next step,
-which returns it. -/
-theorem seqImpl_after_invoke (α : ℕ → Action Unit O) {t k : ℕ} {o : O}
-    (hat : α t = .invoke () o)
-    (hpt : (((seqImpl obj (Resp := Resp)).execution (seqImpl obj).initial α t).proc ()).pending =
-      none)
-    (hdt : (((seqImpl obj (Resp := Resp)).execution (seqImpl obj).initial α t).proc ()).done = k) :
-    ∀ m, t < m →
-      k < (((seqImpl obj (Resp := Resp)).execution (seqImpl obj).initial α m).proc ()).done ∨
-      ((((seqImpl obj (Resp := Resp)).execution (seqImpl obj).initial α m).proc ()).pending.isSome ∧
-        (((seqImpl obj (Resp := Resp)).execution (seqImpl obj).initial α m).proc ()).done = k) := by
-  intro m hm
-  induction m, hm using Nat.le_induction with
-  | base =>
-    change k < (((seqImpl obj).act (Implementation.execution _ _ α t) (α t)).proc ()).done ∨
-      ((((seqImpl obj).act (Implementation.execution _ _ α t) (α t)).proc ()).pending.isSome ∧
-        (((seqImpl obj).act (Implementation.execution _ _ α t) (α t)).proc ()).done = k)
-    rw [hat, (seqImpl_invoke_idle obj _ o hpt).1]
-    exact Or.inr ⟨rfl, hdt⟩
-  | succ m _ ih =>
-    change k < (((seqImpl obj).act (Implementation.execution _ _ α m) (α m)).proc ()).done ∨
-      ((((seqImpl obj).act (Implementation.execution _ _ α m) (α m)).proc ()).pending.isSome ∧
-        (((seqImpl obj).act (Implementation.execution _ _ α m) (α m)).proc ()).done = k)
-    rcases ih with hk | ⟨hb, hd⟩
-    · exact Or.inl (lt_of_lt_of_le hk ((seqImpl obj).done_le_act _ _ _))
-    · obtain ⟨o', ho'⟩ := Option.isSome_iff_exists.mp hb
-      cases α m with
-      | invoke u _ =>
-        cases u
-        simp only [act, ho']
-        exact Or.inr ⟨rfl, hd⟩
-      | step u =>
-        cases u
-        rw [(seqImpl_step_busy obj _ ho' ((seqImpl_state_pending obj α m).trans ho')).1]
-        exact Or.inl (by simp [hd])
-
-/-- The one-process construction is conflict-obstruction-free — indeed wait-free: a pending
-operation of a correct process returns at its next step. -/
-theorem seqImpl_cof (conflict : O → O → Prop) :
-    (seqImpl obj (Resp := Resp)).ConflictObstructionFree conflict := by
-  rintro _ ⟨α, rfl⟩ ⟨u, k, o⟩ ⟨t, hat, hpt, hdt⟩ hcorr -
-  cases u
-  have key := seqImpl_after_invoke obj α hat hpt hdt
-  rcases hcorr with hsteps | ⟨N, hidle⟩
-  · obtain ⟨m, hm, hstep, hbusy⟩ := hsteps (t + 1)
-    rcases key m (by omega) with hk | ⟨hb, hd⟩
-    · exact ⟨m, hk⟩
-    · refine ⟨m + 1, ?_⟩
-      change k < (((seqImpl obj).act (Implementation.execution _ _ α m) (α m)).proc ()).done
-      obtain ⟨o', ho'⟩ := Option.isSome_iff_exists.mp hb
-      rw [hstep, (seqImpl_step_busy obj _ ho' ((seqImpl_state_pending obj α m).trans ho')).1]
-      simp [hd]
-  · rcases key (max N (t + 1)) (by omega) with hk | ⟨hb, -⟩
-    · exact ⟨_, hk⟩
-    · simp [hidle _ (Nat.le_max_left _ _)] at hb
+/-- The one-process construction is wait-free: a pending operation returns at the next step of
+the process. -/
+theorem seqImpl_waitFree : (seqImpl obj).WaitFree :=
+  waitFree_of_steps_return _ fun α m u _ ho => by
+    cases u
+    rw [(seqImpl_step_busy obj _ ho ((seqImpl_state_pending obj α m).trans ho)).1]
 
 /-- **A COF universal construction exists for one process**: the process runs the sequential
 specification itself. -/
 theorem cofUniversal_unit : COFUniversal.{0, 0, 0, 0} Unit := fun _ _ _ obj =>
-  ⟨Unit, Unit, _, seqImpl obj, seqImpl_linearizable obj, seqImpl_cof obj _⟩
+  ⟨Unit, Unit, _, seqImpl obj, seqImpl_linearizable obj, waitFree_imp_cof (seqImpl_waitFree obj)⟩
 
 end OneProcess
 
@@ -392,8 +431,7 @@ theorem hinv_record {H : History (Fin 3) Unit Unit} {t : ℕ} (h : HInv H t)
       rcases List.mem_append.mp ha with ha | ha
       · exact hlater a ha
       · rw [List.mem_singleton.mp ha]; simp
-  · classical
-    simp only [History.record]
+  · simp only [History.record]
     refine ⟨?_, ?_⟩
     · refine List.pairwise_map.mpr (hpw.imp fun {a b} hab => ?_)
       split <;> split <;> simpa using hab
@@ -421,35 +459,10 @@ theorem legal_unit : ∀ L : List (Unit × Unit), unitObj.Legal () L
 theorem eager_linearizable : eager.Linearizable unitObj := by
   intro acts
   obtain ⟨hpw, htime⟩ := hinv_recordRun acts eager.initial [] 0 ⟨List.Pairwise.nil, by simp⟩
-  refine ⟨(eager.history acts).filterMap fun a => a.returned.map fun x => (a, x.1),
-    ?_, ?_, ?_, legal_unit _, ?_⟩
-  · have hnd : (eager.history acts).Nodup := hpw.imp fun {a b} h hab => by subst hab; omega
-    exact hnd.sublist (filterMap_returned_sublist _)
-  · intro x hx
-    obtain ⟨a, ha, hax⟩ := List.mem_filterMap.mp hx
-    obtain ⟨y, -, rfl⟩ := Option.map_eq_some_iff.mp hax
-    exact ha
-  · intro a ha r t hr
-    exact List.mem_filterMap.mpr ⟨a, ha, by simp [hr]⟩
-  · intro x y hxy r t hy
-    have hsub := (hxy.map Prod.fst).trans (filterMap_returned_sublist _)
-    have hlt := List.rel_of_pairwise_cons (hpw.sublist hsub) (List.mem_singleton_self _)
-    have := ((htime y.1 (hsub.subset (by simp))).2 r t hy).1
-    omega
+  exact ⟨_, isLinearization_returnedOps hpw (fun a ha r t hr => ((htime a ha).2 r t hr).1)
+    (legal_unit _)⟩
 
 /-! ### Conflict-obstruction freedom (indeed wait freedom) -/
-
-theorem act_other {c : ImplConfig (Fin 3) Unit Unit Unit Unit} {a : Action (Fin 3) Unit}
-    {p : Fin 3} (hp : ∀ o, a ≠ .invoke p o) (hs : a ≠ .step p) :
-    (eager.act c a).proc p = c.proc p := by
-  classical
-  cases a with
-  | invoke q o =>
-    have hq : p ≠ q := fun h => hp o (by rw [h])
-    cases h : (c.proc q).pending <;> simp [act, h, Function.update, hq]
-  | step q =>
-    have hq : p ≠ q := fun h => hs (by rw [h])
-    cases h : (c.proc q).pending <;> simp [act, h, Function.update, hq]
 
 /-- A step of a busy process returns its operation. -/
 theorem step_done (c : ImplConfig (Fin 3) Unit Unit Unit Unit) (p : Fin 3) {o : Unit}
@@ -458,60 +471,8 @@ theorem step_done (c : ImplConfig (Fin 3) Unit Unit Unit Unit) (p : Fin 3) {o : 
   simp only [act, h]
   simp [stepResult, eager, ProcState.after, Function.update]
 
-/-- After `p` is invoked at `t` with `k` returned operations, it stays pending with `k`
-returned operations until its operation returns. -/
-theorem after_invoke (α : ℕ → Action (Fin 3) Unit) {p : Fin 3} {t k : ℕ} {o : Unit}
-    (hat : α t = .invoke p o)
-    (hpt : ((eager.execution eager.initial α t).proc p).pending = none)
-    (hdt : ((eager.execution eager.initial α t).proc p).done = k) :
-    ∀ m, t < m → k < ((eager.execution eager.initial α m).proc p).done ∨
-      (((eager.execution eager.initial α m).proc p).pending.isSome ∧
-        ((eager.execution eager.initial α m).proc p).done = k) := by
-  classical
-  intro m hm
-  induction m, hm using Nat.le_induction with
-  | base =>
-    right
-    change ((eager.act _ (α t)).proc p).pending.isSome ∧ ((eager.act _ (α t)).proc p).done = k
-    rw [hat]
-    simp [act, hpt, hdt]
-  | succ m _ ih =>
-    change k < ((eager.act _ (α m)).proc p).done ∨
-      (((eager.act _ (α m)).proc p).pending.isSome ∧ ((eager.act _ (α m)).proc p).done = k)
-    rcases ih with hk | ⟨hb, hd⟩
-    · exact Or.inl (lt_of_lt_of_le hk (eager.done_le_act _ _ _))
-    · obtain ⟨o', ho'⟩ := Option.isSome_iff_exists.mp hb
-      by_cases hs : α m = .step p
-      · left
-        rw [hs, step_done _ _ ho', hd]
-        omega
-      · by_cases hi : ∃ o, α m = .invoke p o
-        · obtain ⟨o, ho⟩ := hi
-          right
-          rw [ho]
-          simp only [act, ho']
-          exact ⟨by simp, hd⟩
-        · push Not at hi
-          right
-          rw [act_other hi hs]
-          exact ⟨hb, hd⟩
-
-theorem eager_waitFree : eager.WaitFree := by
-  rintro _ ⟨α, rfl⟩ ⟨p, k, o⟩ ⟨t, hat, hpt, hdt⟩ hcorr
-  dsimp only [trace, StepsAt] at hat hpt hdt hcorr ⊢
-  have key := after_invoke α hat hpt hdt
-  rcases hcorr with hsteps | ⟨N, hidle⟩
-  · obtain ⟨m, hm, hstep, hbusy⟩ := hsteps (t + 1)
-    rcases key m (by omega) with hk | ⟨hb, hd⟩
-    · exact ⟨m, hk⟩
-    · refine ⟨m + 1, ?_⟩
-      change k < ((eager.act _ (α m)).proc p).done
-      obtain ⟨o', ho'⟩ := Option.isSome_iff_exists.mp hb
-      rw [hstep, step_done _ _ ho']
-      omega
-  · rcases key (max N (t + 1)) (by omega) with hk | ⟨hb, -⟩
-    · exact ⟨_, hk⟩
-    · simp [hidle _ (Nat.le_max_left _ _)] at hb
+theorem eager_waitFree : eager.WaitFree :=
+  waitFree_of_steps_return eager fun _ _ p _ ho => step_done _ p ho
 
 /-- **Non-vacuity with three processes**: linearizable and COF, for the one-state object. -/
 theorem eager_linearizable_cof :
