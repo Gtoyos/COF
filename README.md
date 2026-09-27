@@ -18,7 +18,7 @@ is no `sorry`, no added axiom and no `native_decide`, and the build enforces thi
 Read [`COF/Paper.lean`](COF/Paper.lean). It states each result in the paper's terms, next to the
 paper's own wording, and proves it from the rest of the development. The definitions it uses also
 quote the paper. [`MODEL.md`](MODEL.md) explains the formal model and how it corresponds to the
-paper, and [`AUDIT.md`](AUDIT.md) records how the formalization was checked against it.
+paper.
 
 ## Building
 
