@@ -1,4 +1,4 @@
-# Pending Conflicts Make Progress Impossible: a Lean formalization
+# Pending Conflicts Make Progress Impossible: a Lean Formalization
 
 A Lean 4 and Mathlib formalization of *Pending Conflicts Make Progress Impossible* [1].
 
