@@ -220,40 +220,27 @@ theorem invoked_after (input : P → Bool) (σ : ℕ → P) {p : P} {t : ℕ}
       I.singleShot.execution_proc_of_no_steps (I.singleShot.initial input) σ hfirst
     rw [Algorithm.execution_succ, ht, step_of_fresh _ p
       (by rw [hfresh]; simp [Algorithm.initial, singleShot])
-      (by rw [hfresh]; simp [Algorithm.initial, singleShot])
       (by rw [hfresh]; simp [Algorithm.initial])]
     simp [Invoked]
   | succ m _ ih =>
     exact invoked_step (I.clientInv_initial_execution input σ m) ih (σ m)
 
-/-- A client process that `σ` names infinitely often is correct in the trace of `I`: it keeps
-taking steps while it has not decided, and is idle for good once it has. -/
+/-- A client process that `σ` names infinitely often, and that never decides, keeps taking steps of
+its proposal in `I`, so it is correct in the trace. -/
 theorem trace_correct_infActions (input : P → Bool) (σ : ℕ → P) {p : P} {t : ℕ}
-    (ht : σ t = p) (hfirst : ∀ m < t, σ m ≠ p) (hinf : ∀ N, ∃ k ≥ N, σ k = p) :
+    (ht : σ t = p) (hfirst : ∀ m < t, σ m ≠ p) (hinf : ∀ N, ∃ k ≥ N, σ k = p)
+    (hnd : ∀ m,
+      ((I.singleShot.execution (I.singleShot.initial input) σ m).proc p).decision = none) :
     (I.trace (I.infActions (I.singleShot.initial input) σ)).correct (p, 0, input p) := by
-  have hinv := I.clientInv_initial_execution input σ
-  by_cases hdec :
-      ∃ m, ((I.singleShot.execution (I.singleShot.initial input) σ m).proc p).decision.isSome
-  · right
-    obtain ⟨m, hm⟩ := hdec
-    obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp hm
-    refine ⟨m, fun k hk => ?_⟩
-    have hvk := I.singleShot.execution_decision hk hv
-    rw [execution_infActions, embed_proc]
-    rcases (hinv k p).2 with ⟨-, -, hd⟩ | ⟨-, -, hd⟩ | ⟨hp, -, -⟩
-    · exact absurd (hvk.symm.trans hd) (by simp)
-    · exact absurd (hvk.symm.trans hd) (by simp)
-    · exact hp
-  · left
-    push Not at hdec
-    intro N
-    obtain ⟨k, hk, hkp⟩ := hinf (N + t + 1)
-    have hpend := pending_of_invoked (hinv k)
-      (invoked_after input σ ht hfirst k (by omega)) (by simpa using hdec k)
-    refine ⟨k, by omega, ?_, ?_⟩
-    · simp [infActions, hkp, actionOf, hpend]
-    · rw [execution_infActions, embed_proc, hpend]
-      rfl
+  left
+  intro N
+  obtain ⟨k, hk, hkp⟩ := hinf (N + t + 1)
+  have hpend := pending_of_invoked (I.clientInv_initial_execution input σ k)
+    (invoked_after input σ ht hfirst k (by omega)) (hnd k)
+  refine ⟨k, by omega, ?_, ?_⟩
+  · simp [infActions, hkp, actionOf, hpend]
+  · rw [execution_infActions, embed_proc, hpend]
+    rfl
 
 /-- If eventually only processes whose proposals do not conflict with `p`'s take steps, then `p`'s
 proposal is eventually conflict-free in the trace. -/
@@ -274,14 +261,20 @@ theorem trace_conflictFree_infActions (input : P → Bool) (σ : ℕ → P)
     rw [h0, hq]
   · simp [hp] at ho
 
-/-- **COF transfers to the client.** A client process that takes infinitely many steps invokes its
-proposal at its first step, and is correct. If eventually no process with a conflicting proposal
-steps, the proposal is eventually conflict-free, so COF of `I` makes it return: the process
-decides, and takes no further steps. -/
+/-- **COF transfers to the client.** A client process that takes infinitely many steps never
+decides. It invokes its proposal at its first step, and is correct. If eventually no process with a
+conflicting proposal steps, the proposal is eventually conflict-free, so COF of `I` makes it
+return: the process decides after all. -/
 theorem cofTerminationFor_singleShot {obj : Object Q Bool Bool}
     (h : I.ConflictObstructionFree obj.Conflict) : I.singleShot.COFTerminationFor obj := by
   classical
   intro input σ hadm p ⟨N, hN⟩ hinf
+  have hnd : ∀ m,
+      ((I.singleShot.execution (I.singleShot.initial input) σ m).proc p).decision = none := by
+    intro m
+    cases hd : ((I.singleShot.execution (I.singleShot.initial input) σ m).proc p).decision with
+    | none => rfl
+    | some v => exact absurd hinf (hadm.finite_of_decided hd)
   have hsched : ∃ t, σ t = p := by
     obtain ⟨k, -, hk⟩ := hinf 0
     exact ⟨k, hk⟩
@@ -289,7 +282,7 @@ theorem cofTerminationFor_singleShot {obj : Object Q Bool Bool}
   obtain ⟨t, ht⟩ := h (I.trace (I.infActions (I.singleShot.initial input) σ)) ⟨_, rfl⟩
     (p, 0, input p)
     (trace_invoked_infActions input σ (Nat.find_spec hsched) hfirst)
-    (trace_correct_infActions input σ (Nat.find_spec hsched) hfirst hinf)
+    (trace_correct_infActions input σ (Nat.find_spec hsched) hfirst hinf hnd)
     (Or.inr ⟨N, trace_conflictFree_infActions input σ hN⟩)
   -- The proposal returned, so the process has decided.
   change 0 < ((I.execution I.initial _ t).proc p).done at ht
@@ -298,8 +291,7 @@ theorem cofTerminationFor_singleShot {obj : Object Q Bool Bool}
     ⟨-, h0, -⟩ | ⟨-, h0, -⟩ | ⟨-, -, hd⟩
   · omega
   · omega
-  · obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp hd
-    exact hadm.finite_of_decided hv hinf
+  · simp [hnd t] at hd
 
 end SharedMemory.Implementation
 end COF

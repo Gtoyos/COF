@@ -63,16 +63,16 @@ def COFConsensus : Prop :=
 
 /-! ## COF termination from reachable configurations -/
 
-/-- COF termination also holds for executions from any reachable configuration: an admissible run
-that reaches it (`exists_runAdmissible`) can be prepended without affecting either premise. So
-quantifying over reachable starting points, as the proofs do, asks for nothing more. -/
+/-- COF termination also holds for executions from any reachable configuration: a run that
+reaches it, without its entries that are not steps, can be prepended without affecting either
+premise (`exists_admissible_prepend`). So quantifying over reachable starting points, as the proofs
+do, asks for nothing more. -/
 theorem COFTermination.from_reachable {a : Algorithm P R V S} (h : a.COFTermination)
     {input : P → Bool} {c : Config P R V S} (hr : a.Reachable input c) {σ : ℕ → P}
     (hadm : a.Admissible c σ) (hhom : ∃ N v, ∀ k ≥ N, input (σ k) = v) (p : P) :
     ¬ ∀ N, ∃ k ≥ N, σ k = p := by
   obtain ⟨ps', _, rfl⟩ := hr
-  obtain ⟨ps, -, hps, hrun⟩ := a.exists_runAdmissible (a.initial input) ps'
-  rw [← hrun] at hadm
+  obtain ⟨ps, hps⟩ := a.exists_admissible_prepend (a.initial input) ps' hadm
   obtain ⟨N, b, hN⟩ := hhom
   -- The execution from the initial configuration that first runs `ps`, then `σ`.
   have hhom' : ∃ N b, ∀ k ≥ N, input (prepend ps σ k) = b := by
@@ -81,20 +81,9 @@ theorem COFTermination.from_reachable {a : Algorithm P R V S} (h : a.COFTerminat
     rw [prepend_add]
     exact hN j (by omega)
   intro hinf
-  refine h input _ (a.admissible_prepend hps hadm) hhom' p fun M => ?_
+  refine h input _ hps hhom' p fun M => ?_
   obtain ⟨k, hk, he⟩ := hinf M
   exact ⟨ps.length + k, by omega, by simpa using he⟩
-
-/-- From a reachable configuration, if from some point on `σ` names only processes that proposed
-the same value, and names `p` infinitely often, then not all of its entries are steps: at some
-time, the process it names has already decided. This is how the proofs use COF termination. -/
-theorem COFTermination.exists_decided {a : Algorithm P R V S} (h : a.COFTermination)
-    {input : P → Bool} {c : Config P R V S} (hr : a.Reachable input c) (σ : ℕ → P)
-    (hhom : ∃ N v, ∀ k ≥ N, input (σ k) = v) {p : P} (hinf : ∀ N, ∃ k ≥ N, σ k = p) :
-    ∃ n, ((a.execution c σ n).proc (σ n)).decision ≠ none := by
-  by_contra hne
-  push Not at hne
-  exact h.from_reachable hr hne hhom p hinf
 
 /-! ## Related liveness conditions -/
 

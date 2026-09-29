@@ -296,17 +296,6 @@ theorem execution_prepend_cons (c : Config P R V S) (p : P) (ps : List P) (σ : 
   | zero => rfl
   | succ m ih => rw [execution_succ, ih]; rfl
 
-/-- Running the prefix `ps` and then `σ` is the execution of `prepend ps σ`. This turns
-statements about executions from reachable configurations into statements about executions from
-initial configurations. -/
-theorem execution_prepend (c : Config P R V S) (ps : List P) (σ : ℕ → P) (n : ℕ) :
-    a.execution c (prepend ps σ) (ps.length + n) = a.execution (a.run c ps) σ n := by
-  induction ps generalizing c with
-  | nil => simp [prepend]
-  | cons p ps ih =>
-    rw [List.length_cons, Nat.succ_add, execution_prepend_cons]
-    exact ih (a.step c p)
-
 /-! ## Admissible executions -/
 
 /-- Every entry of `σ` is a step: in the execution from `c`, the process `σ k` has not decided
@@ -314,40 +303,25 @@ when it takes step `k`. -/
 def Admissible (c : Config P R V S) (σ : ℕ → P) : Prop :=
   ∀ k, ((a.execution c σ k).proc (σ k)).decision = none
 
-/-- Every entry of `ps` is a step: each process of `ps` has not decided when it takes its step in
-the run from `c`. -/
-def RunAdmissible (a : Algorithm P R V S) : Config P R V S → List P → Prop
-  | _, [] => True
-  | c, p :: ps => (c.proc p).decision = none ∧ a.RunAdmissible (a.step c p) ps
-
-/-- Dropping the entries that are not steps leaves a run that reaches the same configuration. -/
-theorem exists_runAdmissible (c : Config P R V S) (ps : List P) :
-    ∃ qs, (∀ q ∈ qs, q ∈ ps) ∧ a.RunAdmissible c qs ∧ a.run c qs = a.run c ps := by
+/-- If `σ` is admissible after the run `ps` from `c`, then some run followed by `σ` is admissible
+from `c`: `ps` without its entries that are not steps, which change nothing. This turns executions
+from reachable configurations into executions from initial configurations. -/
+theorem exists_admissible_prepend (c : Config P R V S) (ps : List P) {σ : ℕ → P}
+    (hσ : a.Admissible (a.run c ps) σ) : ∃ qs, a.Admissible c (prepend qs σ) := by
   induction ps generalizing c with
-  | nil => exact ⟨[], by simp, trivial, rfl⟩
+  | nil => exact ⟨[], hσ⟩
   | cons p ps ih =>
     cases hp : (c.proc p).decision with
     | some v =>
-      obtain ⟨qs, hqs, hadm, hrun⟩ := ih c
-      refine ⟨qs, fun q hq => by simp [hqs q hq], hadm, ?_⟩
-      rw [hrun, run_cons, a.step_of_decided hp]
+      -- `p` has decided, so its entry is not a step: drop it.
+      rw [run_cons, a.step_of_decided hp] at hσ
+      exact ih c hσ
     | none =>
-      obtain ⟨qs, hqs, hadm, hrun⟩ := ih (a.step c p)
-      exact ⟨p :: qs, by simpa using fun q hq => Or.inr (hqs q hq), ⟨hp, hadm⟩, hrun⟩
-
-/-- An admissible run followed by an admissible execution is an admissible execution. -/
-theorem admissible_prepend {c : Config P R V S} {ps : List P} {σ : ℕ → P}
-    (hps : a.RunAdmissible c ps) (hσ : a.Admissible (a.run c ps) σ) :
-    a.Admissible c (prepend ps σ) := by
-  induction ps generalizing c with
-  | nil => exact hσ
-  | cons p ps ih =>
-    intro k
-    cases k with
-    | zero => exact hps.1
-    | succ k =>
-      rw [execution_prepend_cons]
-      exact ih hps.2 hσ k
+      obtain ⟨qs, hqs⟩ := ih (a.step c p) hσ
+      refine ⟨p :: qs, fun k => ?_⟩
+      cases k with
+      | zero => exact hp
+      | succ k => rw [execution_prepend_cons]; exact hqs k
 
 /-- In an admissible execution, a process that has decided takes no further step, so it takes
 only finitely many steps. -/

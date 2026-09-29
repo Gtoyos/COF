@@ -161,8 +161,7 @@ theorem decideOwnInput_decides :
     (((Algorithm.decideOwnInput Unit).run
       ((Algorithm.decideOwnInput Unit).initial (fun _ => true)) [()]).proc ()).decision =
       some true := by
-  simp [Algorithm.initial]
-  rfl
+  simp [Algorithm.initial, Algorithm.step, Algorithm.decideOwnInput]
 
 /-! ## A COF universal construction with one process -/
 

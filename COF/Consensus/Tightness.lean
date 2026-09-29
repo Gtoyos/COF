@@ -27,12 +27,11 @@ def decideOwnInput (P : Type*) : Algorithm P Unit Unit Bool where
 
 variable {P : Type*}
 
-@[simp] theorem decideOwnInput_step_self (c : Config P Unit Unit Bool) (p : P) :
-    ((decideOwnInput P).step c p).proc p =
-      ⟨(c.proc p).state, (c.proc p).decision.or (some (c.proc p).state)⟩ := by
-  cases h : (c.proc p).decision with
-  | none => simp [step, decideOwnInput, h]
-  | some v => rw [step_of_decided _ h]; exact Local.ext rfl (by simp [h])
+/-- A process that has not decided decides its own input. -/
+theorem decideOwnInput_step_self (c : Config P Unit Unit Bool) {p : P}
+    (hd : (c.proc p).decision = none) :
+    ((decideOwnInput P).step c p).proc p = ⟨(c.proc p).state, some (c.proc p).state⟩ := by
+  simp [step, decideOwnInput, hd]
 
 /-- In every reachable configuration, every process holds its own input, and any decision it has
 taken is that input. -/
@@ -49,9 +48,11 @@ theorem decideOwnInput_reachable {input : P → Bool} {c : Config P Unit Unit Bo
     intro c t _ _ hc p
     by_cases hpt : p = t
     · subst hpt
-      obtain ⟨hs, hd⟩ := hc p
-      refine ⟨by simpa using hs, fun v hv => ?_⟩
-      cases h : (c.proc p).decision <;> simp_all
+      cases hd : (c.proc p).decision with
+      | some w => rw [step_of_decided _ hd]; exact hc p
+      | none =>
+        rw [decideOwnInput_step_self c hd]
+        exact ⟨(hc p).1, fun v hv => by simpa [(hc p).1] using (Option.some.inj hv).symm⟩
     · rw [step_local_other _ _ hpt]
       exact hc p
 
@@ -68,10 +69,8 @@ theorem decideOwnInput_cofTermination : (decideOwnInput P).COFTermination := by
   intro input σ hadm _ p hinf
   obtain ⟨k, -, hk⟩ := hinf 0
   set c := (decideOwnInput P).execution ((decideOwnInput P).initial input) σ k
-  have hd : (c.proc p).decision = none := hk ▸ hadm k
   refine hadm.finite_of_decided (n := k + 1) (v := (c.proc p).state) ?_ hinf
-  rw [execution_succ, hk, decideOwnInput_step_self, hd]
-  rfl
+  rw [execution_succ, hk, decideOwnInput_step_self c (hk ▸ hadm k)]
 
 /-- With at most one process, `decideOwnInput` is a COF consensus algorithm. -/
 theorem decideOwnInput_cofConsensus [Subsingleton P] : (decideOwnInput P).COFConsensus :=

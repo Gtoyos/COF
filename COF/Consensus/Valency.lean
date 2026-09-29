@@ -122,14 +122,17 @@ theorem initial_valent (hval : a.Validity) (active : Set P) (input : P → Bool)
 
 /-! ## The two facts behind the critical-configuration arguments -/
 
-/-- From every reachable configuration, a process running solo decides after finitely many steps:
-only one process takes steps, so COF termination applies. -/
+/-- From every reachable configuration, a process running solo decides after finitely many steps.
+Otherwise its solo run would be an admissible execution in which only it takes steps, infinitely
+many of them, which COF termination forbids. -/
 theorem solo_terminates (ht : a.COFTermination) {input : P → Bool}
     {c : Config P R V S} (hr : a.Reachable input c) (p : P) :
     ∃ ps, (∀ q ∈ ps, q = p) ∧ ∃ v, ((a.run c ps).proc p).decision = some v := by
-  obtain ⟨n, hd⟩ := ht.exists_decided hr (fun _ => p)
-    ⟨0, input p, by simp⟩ (fun N => ⟨N, le_rfl, rfl⟩)
-  obtain ⟨v, hv⟩ := Option.ne_none_iff_exists'.mp hd
+  obtain ⟨n, hn⟩ : ∃ n, ((a.execution c (fun _ => p) n).proc p).decision ≠ none := by
+    by_contra h
+    push Not at h
+    exact ht.from_reachable hr h ⟨0, input p, by simp⟩ p fun N => ⟨N, le_rfl, rfl⟩
+  obtain ⟨v, hv⟩ := Option.ne_none_iff_exists'.mp hn
   exact ⟨List.replicate n p, by simp, v, by simpa [a.execution_solo] using hv⟩
 
 /-- A decision reached by an `active`-only continuation agrees with the valency. -/
