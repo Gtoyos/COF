@@ -71,27 +71,30 @@ that has not decided keeps taking steps.
 
 `WFTermination` implies `COFTermination`, and `COF/Checks/Separation.lean` shows the converse fails.
 
-## Theorem 6 (§4.2)
+## Valency (§4.2)
 
-`Valent`, `Univalent` and `Bivalent` (`COF/Consensus/Valency.lean`) are the paper's, for a set of
-active processes. A configuration from which nothing can be decided is both `0`- and `1`-valent;
-where a proof needs a single valency, `solo_terminates` supplies an actual decision.
+`COF/Consensus/Valency.lean` states the paper's definitions as written, with the pair `{p₁,p₂}`
+generalized to a set `active` of processes:
 
-- **Lemma 3** (`initial_valent`): if all active processes propose `v`, the initial configuration is
-  `v`-valent. Uses Validity.
-- **Critical square** (`COF/Consensus/CriticalSquare.lean`): two steps of distinct processes either
-  commute or one is invisible to every other process (`commutation_or_erasure`). A solo observer
-  cannot tell the branches apart, so they have the same valency.
-- **Lemma 4** (`reachable_bivalent`): otherwise a step of `p₀` from `I` is critical, and it stays
-  critical along `p₁`'s solo run, with `p₂` observing (`critical_step_persists`), until `p₁`
-  decides. That is impossible (`no_critical_step`), and needs the third process.
-- **Lemma 5** (`bivalent_successor`): a reachable bivalent configuration has a bivalent successor.
-  Equal valencies of the two successors pass to the configuration, and different ones contradict
-  the critical square.
-- **Theorem 6** (`no_cof_consensus`): iterating Lemma 5 gives an infinite execution through
-  bivalent configurations in which only `p₁` and `p₂`, who proposed the same value, step. By
-  Agreement nobody has decided in a bivalent configuration, so every entry is a step, and one of
-  `p₁` and `p₂` takes infinitely many steps, which COF termination forbids.
+- `Config.Decided c v`: `c` is `v`-deciding, that is, some process, active or not, has decided `v`.
+- `CanDecide active c v`: some `active`-only continuation of `c`, possibly empty (`Reach`), reaches
+  a `v`-deciding configuration.
+- `Valent active c v`: `c` is `v`-valent, that is, `¬ CanDecide active c (!v)`.
+- `Univalent`: `0`-valent or `1`-valent. `Bivalent`: not univalent, which amounts to both values
+  being decidable (`bivalent_iff`).
+
+This is not the usual notion of Fischer, Lynch and Paterson, where a configuration is `v`-valent
+when `v` is the only decision value reachable from it by steps of any processes. It differs in two
+ways:
+
+- Only continuations by the active processes count: `p₁` and `p₂` in the paper.
+- `v`-valent is negative: it says that `1 − v` cannot be decided, not that `v` can. A configuration
+  from which no value can be decided is therefore both `0`- and `1`-valent, hence univalent,
+  whereas it has no valency in the usual notion.
+
+Under COF termination, the second difference disappears for reachable configurations: an active
+process running solo decides (`solo_terminates`), so some value can always be decided, and
+`v`-valent then means that `v` is the only one.
 
 ## Implementations and linearizability
 
@@ -109,15 +112,8 @@ Lemmas 1 and 2 and Corollary 7.
   `Linearizable` means every finite execution has one.
 - The trace of an infinite execution (`trace`) is what the progress conditions read. A process is
   correct if it takes infinitely many steps or is eventually idle forever.
-
-## Corollary 7
-
-`COFUniversal P`: every sequential object has a linearizable, COF implementation with processes `P`.
-The proof is the paper's reduction (`COF/Universal/`). Run the consensus implementation with
-processes that each propose once (`Implementation.singleShot`). This client is a consensus
-algorithm, step for step (`embed_step`). Linearizability gives it Validity and Agreement
-(`linearizes_singleShot`), COF gives it COF termination (`cofTerminationFor_singleShot`), and
-Theorem 6 applies.
+- `COFUniversal P` (`COF/Universal/Construction.lean`), a COF universal construction: every
+  sequential object has a linearizable, COF implementation with processes `P`.
 
 ## Differences from the paper
 
