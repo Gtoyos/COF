@@ -1,24 +1,25 @@
 # Pending Conflicts Make Progress Impossible: a Lean formalization
 
-A Lean 4 and Mathlib formalization of *Pending Conflicts Make Progress Impossible*, by Petr
-Kuznetsov, Pierre Sutra and Guillermo Toyos-Marfurt. It proves every numbered result of the paper:
+A Lean 4 and Mathlib formalization of *Pending Conflicts Make Progress Impossible* [1].
+
+It formalizes the model of the paper and proves every numbered result:
 
 - **Theorem 6.** No read/write algorithm implements conflict-obstruction-free (COF) consensus for
   three or more processes.
 - **Corollary 7.** No universal construction is conflict-obstruction-free in the read/write model
   for three or more processes.
-- Definitions 1 and 2 (COF), Lemmas 1 and 2 (COF versus obstruction freedom and wait freedom), and
-  Lemmas 3 to 5 (the valency argument behind Theorem 6).
+- **Lemmas 1 and 2** (COF versus obstruction freedom and wait freedom), and
+  **Lemmas 3 to 5** (the valency argument behind Theorem 6).
 
-Every proof uses only Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`). There
-is no `sorry`, no added axiom and no `native_decide`, and the build enforces this.
+Every proof uses only Lean's standard axioms (`propext`, `Classical.choice`, `Quot.sound`).
+`lake build` checks this, and also fails on any warning (including `sorry`) and on any change to
+the statements recorded in [`COF/Checks/Audit.lean`](COF/Checks/Audit.lean).
 
 ## Where to start
 
 Read [`COF/Paper.lean`](COF/Paper.lean). It states each result in the paper's terms, next to the
-paper's own wording, and proves it from the rest of the development. The definitions it uses also
-quote the paper. [`MODEL.md`](MODEL.md) explains the formal model and how it corresponds to the
-paper.
+paper's own wording, and proves it from the rest of the development.
+[`MODEL.md`](MODEL.md) explains the formal model and how it corresponds to the paper.
 
 ## Building
 
@@ -26,37 +27,31 @@ paper.
 lake build
 ```
 
-The Lean and Mathlib versions are pinned by `lean-toolchain` and `lake-manifest.json`. The build
-fails if:
-
-- any warning is emitted, including "declaration uses `sorry`";
-- any declaration of the development depends on an axiom other than the standard three;
-- the statement of any result of `COF/Paper.lean`, or any definition it is built from, differs from
-  the text recorded in [`COF/Checks/Audit.lean`](COF/Checks/Audit.lean).
+The Lean and Mathlib versions are pinned by `lean-toolchain` and `lake-manifest.json`.
 
 ## The results
 
-All names are in the namespace `COF.Paper`.
+The Lean statements are in [`COF/Paper.lean`](COF/Paper.lean). Where one differs from the paper's,
+it is stronger (it assumes less, or holds for more processes);
+[`MODEL.md`](MODEL.md#differences-from-the-paper) lists each difference.
 
-| Paper | Lean | Proof |
-|---|---|---|
-| Definitions 1 and 2 | `definition1`, `definition2` | `COF/Progress.lean` |
-| Lemmas 1 and 2 | `lemma1`, `lemma2` | `COF/Progress.lean` |
-| §4.1: proposals conflict iff they differ | `propose_conflict_iff` | `COF/Objects.lean` |
-| Lemma 3 | `lemma3` | `COF/Consensus/Valency.lean` |
-| Lemma 4 | `lemma4` | `COF/Consensus/InitialBivalence.lean` |
-| Lemma 5 | `lemma5` | `COF/Consensus/BivalentSuccessor.lean` |
-| Theorem 6 | `theorem6` | `COF/Consensus/Impossibility.lean` |
-| Corollary 7 | `corollary7` | `COF/Universal/Construction.lean` |
+| Paper | Proof |
+|---|---|
+| Definitions 1 and 2 (conflict-obstruction-free) | `COF/Progress.lean` |
+| Lemmas 1 and 2 (COF vs OF vs WF) | `COF/Progress.lean` |
+| §4.1: consensus proposals conflict iff they differ | `COF/Objects.lean` |
+| Lemma 3 (the initial configuration $I=(0,1,1)$ is 1-valent) | `COF/Consensus/Valency.lean` |
+| Lemma 4 (a bivalent configuration is reachable from $I$) | `COF/Consensus/InitialBivalence.lean` |
+| Lemma 5 (a bivalent configuration is reachable from any reachable bivalent one) | `COF/Consensus/BivalentSuccessor.lean` |
+| Theorem 6 (no read/write COF consensus algorithm for $n \geq 3$) | `COF/Consensus/Impossibility.lean` |
+| Corollary 7 (no read/write COF universal construction for $n \geq 3$) | `COF/Universal/Construction.lean` |
 
-Where a Lean statement differs from the paper's, it is stronger: it assumes less, or holds for more
-processes. [`MODEL.md`](MODEL.md#differences-from-the-paper) lists each difference.
-
-The paper's §4.1 also remarks that COF consensus *is* implementable for two processes, citing
+The paper remarks that COF consensus *is* implementable for two processes, citing
 Attiya, Guerraoui, Hendler and Kuznetsov (JACM, 2009). That result is outside the paper's proofs
-and is not formalized. [`COF/Consensus/Tightness.lean`](COF/Consensus/Tightness.lean) states it as
-the explicit hypothesis `TwoProcessCOFConsensus` and derives from it that three processes is the
-exact threshold. Nothing else depends on it.
+and is not formalized.
+[`COF/Consensus/Tightness.lean`](COF/Consensus/Tightness.lean) states it as the explicit hypothesis
+`TwoProcessCOFConsensus` and derives from it that three processes is the exact threshold. Nothing
+else depends on it.
 
 ## Layout
 
@@ -77,3 +72,7 @@ COF/
                          needs reachability, and that the definitions behave on the paper's
                          Figure 1 and on small histories
 ```
+
+## References
+
+- [1] Petr Kuznetsov, Pierre Sutra, Guillermo Toyos-Marfurt, Pending conflicts make progress impossible, Information Processing Letters, Volume 196, 2027, 106668, ISSN 0020-0190, 10.1016/j.ipl.2026.106668.
