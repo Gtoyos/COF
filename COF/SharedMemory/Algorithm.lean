@@ -14,10 +14,13 @@ input and may decide a binary value. Consensus algorithms are exactly such algor
   initial local state depends only on its own input, its next step only on its local state, and
   the initial memory not on the inputs at all.
 * A **step** (`Algorithm.step`) is one read or one write of an atomic register, together with
-  local computation. A read sees the value read. A write sees nothing of the memory.
-* A **schedule** is a list of processes (`Algorithm.run`) or a sequence of them
-  (`Algorithm.execution`). Schedules are arbitrary: there is no fairness, and a process that is
-  never scheduled again has crashed.
+  local computation. A read sees the value read. A write sees nothing of the memory. A process that
+  has decided has completed its `propose` operation and takes no further steps.
+* An **execution** is given by the processes taking its steps, in order: a list of them
+  (`Algorithm.run`) or a sequence of them (`Algorithm.execution`). There is no fairness, and a
+  process that stops taking steps before deciding has crashed. An entry naming a process that has
+  already decided is not a step and changes nothing (`step_of_decided`). In an `Admissible`
+  execution, every entry is a step.
 
 Nothing is assumed of the types of processes `P`, registers `R`, register values `V` or local
 states `S`, not even decidable equality: `step` decides equality classically.
@@ -73,19 +76,22 @@ open scoped Classical in
 paper, for the step `e` of `p`. Only `p`'s local state and the register `p` writes, if any,
 change.
 
-A decision, once taken, is never revised: the new decision is `old.decision.or next.decision`.
-A process that has decided may keep being scheduled; its steps then belong to no pending
-operation. -/
+A process that has decided has completed its `propose` operation, and takes no further steps: for
+it, `step c p = c`. So a decision, once taken, is never revised. -/
 noncomputable def step (c : Config P R V S) (p : P) : Config P R V S :=
-  let old := c.proc p
-  let finish := fun (memory : R → V) (next : Local S) =>
-    Config.mk memory (Function.update c.proc p
-      ⟨next.state, old.decision.or next.decision⟩)
-  match a.instruction p old.state with
-  | .read r next => finish c.memory (next (c.memory r))
-  | .write r v next => finish (Function.update c.memory r v) next
+  match (c.proc p).decision with
+  | some _ => c
+  | none =>
+    match a.instruction p (c.proc p).state with
+    | .read r next => ⟨c.memory, Function.update c.proc p (next (c.memory r))⟩
+    | .write r v next => ⟨Function.update c.memory r v, Function.update c.proc p next⟩
 
-/-- Execute a finite schedule, one step per entry. -/
+/-- A process that has decided takes no step. -/
+theorem step_of_decided {c : Config P R V S} {p : P} {v : Bool}
+    (h : (c.proc p).decision = some v) : a.step c p = c := by
+  simp [step, h]
+
+/-- Run the processes of a list, in order, from `c`. -/
 noncomputable def run (a : Algorithm P R V S) (c : Config P R V S) : List P → Config P R V S
   | [] => c
   | p :: ps => a.run (a.step c p) ps
@@ -102,13 +108,13 @@ noncomputable def run (a : Algorithm P R V S) (c : Config P R V S) : List P → 
 
 /-! ## Reachability -/
 
-/-- `d` is reachable from `c` by a schedule of processes in `active`: `c ⇝π d` for an
-`active`-only `π`, in the paper's notation. The empty schedule is allowed. -/
+/-- `d` is reachable from `c` by steps of processes in `active`: `c ⇝π d` for an `active`-only
+`π`, in the paper's notation. The empty sequence of steps is allowed. -/
 def Reach (active : Set P) (c d : Config P R V S) : Prop :=
   ∃ ps, (∀ p ∈ ps, p ∈ active) ∧ d = a.run c ps
 
-/-- `c` is reachable from the initial configuration for `input`, by any schedule: `c` is a
-configuration of an execution. -/
+/-- `c` is reachable from the initial configuration for `input`, by steps of any processes: `c`
+is a configuration of an execution. -/
 def Reachable (input : P → Bool) (c : Config P R V S) : Prop :=
   a.Reach Set.univ (a.initial input) c
 
@@ -132,8 +138,7 @@ theorem reachable_step {input : P → Bool} {c : Config P R V S}
     (hr : a.Reachable input c) (p : P) : a.Reachable input (a.step c p) :=
   a.reachable_run hr [p]
 
-/-- Induction along a finite schedule of `allowed` processes, through reachable
-configurations. -/
+/-- Induction along a run of `allowed` processes, through reachable configurations. -/
 theorem run_induction {input : P → Bool} {Motive : Config P R V S → Prop}
     {allowed : P → Prop}
     (hstep : ∀ c p, allowed p → a.Reachable input c → Motive c → Motive (a.step c p))
@@ -151,21 +156,20 @@ theorem run_induction {input : P → Bool} {Motive : Config P R V S → Prop}
 @[simp] theorem step_local_other (c : Config P R V S) {p q : P} (h : q ≠ p) :
     (a.step c p).proc q = c.proc q := by
   unfold step
-  dsimp only
-  split <;> simp [Function.update, h]
+  split
+  · rfl
+  · split <;> simp [Function.update, h]
 
-/-- Decisions persist across a step, whoever is scheduled. -/
+/-- Decisions persist across a step, whoever takes it. -/
 theorem step_decision (c : Config P R V S) (p q : P) (v : Bool)
     (h : (c.proc q).decision = some v) :
     ((a.step c p).proc q).decision = some v := by
   by_cases hp : q = p
   · subst q
-    unfold step
-    dsimp only
-    split <;> simp [h]
+    rw [a.step_of_decided h, h]
   · simpa [a.step_local_other c hp] using h
 
-/-- Decisions persist across a finite schedule. -/
+/-- Decisions persist across a run. -/
 theorem run_decision (c : Config P R V S) (ps : List P) (q : P) (v : Bool)
     (h : (c.proc q).decision = some v) :
     ((a.run c ps).proc q).decision = some v := by
@@ -173,7 +177,7 @@ theorem run_decision (c : Config P R V S) (ps : List P) (q : P) (v : Bool)
   | nil => exact h
   | cons p ps ih => exact ih _ (a.step_decision c p q v h)
 
-/-- A process that is never scheduled keeps its local state, decision included. -/
+/-- A process that takes no step keeps its local state, decision included. -/
 theorem run_local_untouched (c : Config P R V S) {ps : List P} {p : P}
     (h : p ∉ ps) : (a.run c ps).proc p = c.proc p := by
   induction ps generalizing c with
@@ -201,17 +205,18 @@ theorem indist_step {observers : Set P} {c d : Config P R V S}
   obtain ⟨hm, hl⟩ := h
   have hlocal := hl p hp
   unfold step
-  dsimp only
   rw [hm, hlocal]
-  split <;> constructor
-  all_goals try rfl
-  all_goals
-    intro q hq
-    by_cases heq : q = p
-    · subst q; simp
-    · simp [Function.update, heq, hl q hq]
+  split
+  · exact ⟨hm, hl⟩
+  · split <;> constructor
+    all_goals try rfl
+    all_goals
+      intro q hq
+      by_cases heq : q = p
+      · subst q; simp
+      · simp [Function.update, heq, hl q hq]
 
-/-- A schedule of observers preserves indistinguishability for the observers: a solo run can be
+/-- A run of observers preserves indistinguishability for the observers: a solo run can be
 replayed from a configuration that the running process cannot tell apart. -/
 theorem indist_run {observers : Set P} {c d : Config P R V S}
     (h : Indist observers c d) {ps : List P} (hps : ∀ p ∈ ps, p ∈ observers) :
@@ -223,8 +228,8 @@ theorem indist_run {observers : Set P} {c d : Config P R V S}
 
 /-! ## Infinite executions -/
 
-/-- The configurations of the infinite execution from `c` under the schedule `σ`: after `n`
-steps, `σ 0, …, σ (n - 1)` have been scheduled. -/
+/-- The configurations of the infinite execution from `c` in which the processes `σ 0, σ 1, …`
+take the successive steps. -/
 noncomputable def execution (a : Algorithm P R V S) (c : Config P R V S) (σ : ℕ → P) :
     ℕ → Config P R V S
   | 0 => c
@@ -242,8 +247,8 @@ theorem execution_decision {c : Config P R V S} {σ : ℕ → P}
   | base => exact hd
   | succ m _ ih => exact a.step_decision _ _ _ _ ih
 
-/-- A process that has not been scheduled yet keeps its initial local state. -/
-theorem execution_proc_of_unscheduled (c : Config P R V S) (σ : ℕ → P) {p : P} {t : ℕ}
+/-- A process that has taken no step yet keeps its initial local state. -/
+theorem execution_proc_of_no_steps (c : Config P R V S) (σ : ℕ → P) {p : P} {t : ℕ}
     (h : ∀ m < t, σ m ≠ p) : (a.execution c σ t).proc p = c.proc p := by
   induction t with
   | zero => rfl
@@ -251,8 +256,8 @@ theorem execution_proc_of_unscheduled (c : Config P R V S) (σ : ℕ → P) {p :
     rw [execution_succ, a.step_local_other _ (Ne.symm (h t (by omega))),
       ih fun m hm => h m (by omega)]
 
-/-- A process that is not scheduled between times `s` and `t` keeps its local state. -/
-theorem execution_proc_of_unscheduled_between (c : Config P R V S) (σ : ℕ → P) {p : P}
+/-- A process that takes no step between times `s` and `t` keeps its local state. -/
+theorem execution_proc_of_no_steps_between (c : Config P R V S) (σ : ℕ → P) {p : P}
     {s t : ℕ} (hst : s ≤ t) (h : ∀ m, s ≤ m → m < t → σ m ≠ p) :
     (a.execution c σ t).proc p = (a.execution c σ s).proc p := by
   induction t, hst using Nat.le_induction with
@@ -261,7 +266,7 @@ theorem execution_proc_of_unscheduled_between (c : Config P R V S) (σ : ℕ →
     rw [execution_succ, a.step_local_other _ (Ne.symm (h t hst (by omega))),
       ih fun m h₁ h₂ => h m h₁ (by omega)]
 
-/-- An execution under the constant schedule `p, p, …` is a solo run of `p`. -/
+/-- The execution of the constant sequence `p, p, …` is a solo run of `p`. -/
 theorem execution_solo (c : Config P R V S) (p : P) (n : ℕ) :
     a.execution c (fun _ => p) n = a.run c (List.replicate n p) := by
   induction n with
@@ -270,7 +275,7 @@ theorem execution_solo (c : Config P R V S) (p : P) (n : ℕ) :
     rw [execution, ih, List.replicate_succ', run_append]
     rfl
 
-/-- The schedule that runs the list `ps` and then `σ`. -/
+/-- The sequence that runs the list `ps` and then `σ`. -/
 def prepend (ps : List P) (σ : ℕ → P) : ℕ → P :=
   match ps with
   | [] => σ
@@ -284,6 +289,13 @@ def prepend (ps : List P) (σ : ℕ → P) : ℕ → P :=
   | nil => simp [prepend]
   | cons p ps ih => simpa [prepend, Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using ih
 
+/-- The first entry of `prepend (p :: ps) σ` is `p`, and the rest is `prepend ps σ`. -/
+theorem execution_prepend_cons (c : Config P R V S) (p : P) (ps : List P) (σ : ℕ → P) (m : ℕ) :
+    a.execution c (prepend (p :: ps) σ) (m + 1) = a.execution (a.step c p) (prepend ps σ) m := by
+  induction m with
+  | zero => rfl
+  | succ m ih => rw [execution_succ, ih]; rfl
+
 /-- Running the prefix `ps` and then `σ` is the execution of `prepend ps σ`. This turns
 statements about executions from reachable configurations into statements about executions from
 initial configurations. -/
@@ -292,14 +304,62 @@ theorem execution_prepend (c : Config P R V S) (ps : List P) (σ : ℕ → P) (n
   induction ps generalizing c with
   | nil => simp [prepend]
   | cons p ps ih =>
-    have shift : ∀ m, a.execution c (prepend (p :: ps) σ) (m + 1) =
-        a.execution (a.step c p) (prepend ps σ) m := by
-      intro m
-      induction m with
-      | zero => rfl
-      | succ m ihm => rw [execution_succ, ihm]; rfl
-    rw [List.length_cons, Nat.succ_add, shift]
+    rw [List.length_cons, Nat.succ_add, execution_prepend_cons]
     exact ih (a.step c p)
+
+/-! ## Admissible executions -/
+
+/-- Every entry of `σ` is a step: in the execution from `c`, the process `σ k` has not decided
+when it takes step `k`. -/
+def Admissible (c : Config P R V S) (σ : ℕ → P) : Prop :=
+  ∀ k, ((a.execution c σ k).proc (σ k)).decision = none
+
+/-- Every entry of `ps` is a step: each process of `ps` has not decided when it takes its step in
+the run from `c`. -/
+def RunAdmissible (a : Algorithm P R V S) : Config P R V S → List P → Prop
+  | _, [] => True
+  | c, p :: ps => (c.proc p).decision = none ∧ a.RunAdmissible (a.step c p) ps
+
+/-- Dropping the entries that are not steps leaves a run that reaches the same configuration. -/
+theorem exists_runAdmissible (c : Config P R V S) (ps : List P) :
+    ∃ qs, (∀ q ∈ qs, q ∈ ps) ∧ a.RunAdmissible c qs ∧ a.run c qs = a.run c ps := by
+  induction ps generalizing c with
+  | nil => exact ⟨[], by simp, trivial, rfl⟩
+  | cons p ps ih =>
+    cases hp : (c.proc p).decision with
+    | some v =>
+      obtain ⟨qs, hqs, hadm, hrun⟩ := ih c
+      refine ⟨qs, fun q hq => by simp [hqs q hq], hadm, ?_⟩
+      rw [hrun, run_cons, a.step_of_decided hp]
+    | none =>
+      obtain ⟨qs, hqs, hadm, hrun⟩ := ih (a.step c p)
+      exact ⟨p :: qs, by simpa using fun q hq => Or.inr (hqs q hq), ⟨hp, hadm⟩, hrun⟩
+
+/-- An admissible run followed by an admissible execution is an admissible execution. -/
+theorem admissible_prepend {c : Config P R V S} {ps : List P} {σ : ℕ → P}
+    (hps : a.RunAdmissible c ps) (hσ : a.Admissible (a.run c ps) σ) :
+    a.Admissible c (prepend ps σ) := by
+  induction ps generalizing c with
+  | nil => exact hσ
+  | cons p ps ih =>
+    intro k
+    cases k with
+    | zero => exact hps.1
+    | succ k =>
+      rw [execution_prepend_cons]
+      exact ih hps.2 hσ k
+
+/-- In an admissible execution, a process that has decided takes no further step, so it takes
+only finitely many steps. -/
+theorem Admissible.finite_of_decided {a : Algorithm P R V S} {c : Config P R V S} {σ : ℕ → P}
+    (h : a.Admissible c σ)
+    {n : ℕ} {p : P} {v : Bool} (hd : ((a.execution c σ n).proc p).decision = some v) :
+    ¬ ∀ N, ∃ k ≥ N, σ k = p := by
+  intro hinf
+  obtain ⟨k, hk, rfl⟩ := hinf n
+  have := h k
+  rw [a.execution_decision hk hd] at this
+  cases this
 
 end Algorithm
 end COF.SharedMemory

@@ -17,8 +17,7 @@ file and the definitions it uses, each of which quotes the paper.
 * §4.2, valency passes to descendants: `valent_descendant`.
 * Lemma 3 (`init_config_1valent`), Lemma 4 (`init_tobivalent`), Lemma 5 (`bivalent_to_bivalent`):
   `lemma3`, `lemma4`, `lemma5`.
-* Theorem 6 (`no_quasi_cons`): `theorem6`, with `theorem6_of_three` for any process type and
-  `theorem6_strict` for the strict reading of COF termination.
+* Theorem 6 (`no_quasi_cons`): `theorem6`, with `theorem6_of_three` for any process type.
 * Corollary 7 (`no_cof_univ`): `corollary7`, with `corollary7_of_three` for any process type.
 
 Where a statement here differs from the paper's, it is stronger: fewer hypotheses, or more
@@ -170,12 +169,6 @@ theorem theorem6_of_three {P R V S : Type*} (a : Algorithm P R V S) (p₀ p₁ p
     (h₀₁ : p₀ ≠ p₁) (h₀₂ : p₀ ≠ p₂) (h₁₂ : p₁ ≠ p₂) :
     ¬ (a.Validity ∧ a.Agreement ∧ a.COFTermination) :=
   a.no_cof_consensus p₀ p₁ p₂ h₀₁ h₀₂ h₁₂
-
-/-- Theorem 6 with the strict reading of COF termination, in which steps taken by processes that
-have already decided do not count. -/
-theorem theorem6_strict {n : ℕ} (hn : 3 ≤ n) {R V S : Type*} (a : Algorithm (Fin n) R V S) :
-    ¬ (a.Validity ∧ a.Agreement ∧ a.StrictCOFTermination) :=
-  fun ⟨hval, hag, ht⟩ => theorem6 hn a ⟨hval, hag, ht.cofTermination⟩
 
 /-- **Corollary 7** (`no_cof_univ`). "No universal construction algorithm is
 conflict-obstruction-free in the read-write shared memory model of three or more processes." -/

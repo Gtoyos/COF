@@ -30,7 +30,9 @@ variable {P : Type*}
 @[simp] theorem decideOwnInput_step_self (c : Config P Unit Unit Bool) (p : P) :
     ((decideOwnInput P).step c p).proc p =
       ⟨(c.proc p).state, (c.proc p).decision.or (some (c.proc p).state)⟩ := by
-  simp [step, decideOwnInput]
+  cases h : (c.proc p).decision with
+  | none => simp [step, decideOwnInput, h]
+  | some v => rw [step_of_decided _ h]; exact Local.ext rfl (by simp [h])
 
 /-- In every reachable configuration, every process holds its own input, and any decision it has
 taken is that input. -/
@@ -61,13 +63,15 @@ theorem decideOwnInput_agreement [Subsingleton P] : (decideOwnInput P).Agreement
   rw [(decideOwnInput_reachable hr p).2 v hp, (decideOwnInput_reachable hr q).2 w hq,
     Subsingleton.elim p q]
 
-/-- Every scheduled process decides at its first step. -/
+/-- Every process decides at its first step, so it takes only one step. -/
 theorem decideOwnInput_cofTermination : (decideOwnInput P).COFTermination := by
-  intro input σ _ p hinf
+  intro input σ hadm _ p hinf
   obtain ⟨k, -, hk⟩ := hinf 0
-  refine ⟨k + 1, ?_⟩
-  rw [execution_succ, hk, decideOwnInput_step_self]
-  cases ((decideOwnInput P).execution _ σ k |>.proc p).decision <;> simp
+  set c := (decideOwnInput P).execution ((decideOwnInput P).initial input) σ k
+  have hd : (c.proc p).decision = none := hk ▸ hadm k
+  refine hadm.finite_of_decided (n := k + 1) (v := (c.proc p).state) ?_ hinf
+  rw [execution_succ, hk, decideOwnInput_step_self, hd]
+  rfl
 
 /-- With at most one process, `decideOwnInput` is a COF consensus algorithm. -/
 theorem decideOwnInput_cofConsensus [Subsingleton P] : (decideOwnInput P).COFConsensus :=
@@ -84,20 +88,8 @@ def COFConsensusImplementable (P : Type*) : Prop :=
   ∃ (R V S : Type) (a : Algorithm P R V S), a.COFConsensus
 
 /-- **The cited two-process result, assumed rather than proved**: COF consensus is implementable
-for two processes (paper §4.1).
-
-It is stated with `COFTermination`. Under the strict reading of COF termination the claim is
-stronger, and it implies this one (`cofConsensusImplementable_of_strict`), so the hypothesis asks
-for no more than the paper claims. -/
+for two processes (paper §4.1). -/
 def TwoProcessCOFConsensus : Prop := COFConsensusImplementable (Fin 2)
-
-/-- The claim with the strict reading of COF termination implies `COFConsensusImplementable`. -/
-theorem cofConsensusImplementable_of_strict {P : Type*}
-    (h : ∃ (R V S : Type) (a : Algorithm P R V S),
-      a.Validity ∧ a.Agreement ∧ a.StrictCOFTermination) :
-    COFConsensusImplementable P := by
-  obtain ⟨R, V, S, a, hval, hag, ht⟩ := h
-  exact ⟨R, V, S, a, hval, hag, ht.cofTermination⟩
 
 /-- With at most one process, COF consensus is implementable. -/
 theorem cofConsensusImplementable_of_subsingleton (P : Type*) [Subsingleton P] :

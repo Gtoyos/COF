@@ -119,86 +119,44 @@ theorem embed_update (c : Config P R V (ClientState S)) (m : R → V) (p : P)
 open scoped Classical in
 /-- A step of a client process with a pending operation is a step of that operation in `I`. -/
 theorem step_of_pending (c : Config P R V (ClientState S)) (p : P) {o : Bool}
-    (h : (c.proc p).state.1.pending = some o) :
+    (h : (c.proc p).state.1.pending = some o) (hd : (c.proc p).decision = none) :
     I.singleShot.step c p =
       ⟨(I.stepResult (embed c) p o).1, update c.proc p
         ⟨((I.stepResult (embed c) p o).2.1, (c.proc p).state.2),
           (c.proc p).decision.or (I.stepResult (embed c) p o).2.2⟩⟩ := by
-  simp only [Algorithm.step, singleShot, h, stepResult, embed_proc, embed_memory]
-  cases I.instruction p (c.proc p).state.1.state <;> rfl
+  simp only [Algorithm.step, singleShot, h, hd, stepResult, embed_proc, embed_memory]
+  cases I.instruction p (c.proc p).state.1.state <;> simp
 
 open scoped Classical in
 /-- A client process that has not invoked yet invokes the operation its input names. -/
 theorem step_of_fresh (c : Config P R V (ClientState S)) (p : P)
-    (h : (c.proc p).state.1.pending = none) (h0 : (c.proc p).state.1.done = 0) :
+    (h : (c.proc p).state.1.pending = none) (h0 : (c.proc p).state.1.done = 0)
+    (hd : (c.proc p).decision = none) :
     I.singleShot.step c p =
       ⟨c.memory, update c.proc p
         ⟨(⟨I.invoke p (c.proc p).state.2 (c.proc p).state.1.state,
             some (c.proc p).state.2, 0⟩, (c.proc p).state.2), (c.proc p).decision⟩⟩ := by
-  simp only [Algorithm.step, singleShot, h, h0, ite_true, Option.or_none]
+  simp only [Algorithm.step, singleShot, h, h0, hd, ite_true]
 
 /-- A client process whose operation has returned is idle: its steps change nothing. -/
 theorem step_of_returned (c : Config P R V (ClientState S)) (p : P)
     (h : (c.proc p).state.1.pending = none) (h0 : (c.proc p).state.1.done ≠ 0) :
     I.singleShot.step c p = c := by
   classical
-  simp only [Algorithm.step, singleShot, h, h0, ite_false, Option.or_none]
+  cases hd : (c.proc p).decision with
+  | some v => exact Algorithm.step_of_decided _ hd
+  | none =>
+  simp only [Algorithm.step, singleShot, h, h0, hd, ite_false]
   apply Config.ext
   · rfl
   · funext q
     by_cases hq : q = p
     · subst hq
-      simp
+      simp only [update_self]
+      exact Local.ext rfl hd.symm
     · simp [update_of_ne hq]
 
-/-- **The simulation.** Each step of the client performs one action of `I`, from the
-corresponding configuration. -/
-theorem embed_step (c : Config P R V (ClientState S)) (p : P) :
-    embed (I.singleShot.step c p) = I.act (embed c) (actionOf p (c.proc p).state) := by
-  cases hp : (c.proc p).state.1.pending with
-  | some o =>
-    rw [step_of_pending c p hp, embed_update]
-    simp [actionOf, act, hp]
-  | none =>
-    by_cases h0 : (c.proc p).state.1.done = 0
-    · rw [step_of_fresh c p hp h0, embed_update]
-      simp [actionOf, act, hp, h0]
-    · rw [step_of_returned c p hp h0]
-      simp [actionOf, act, hp, h0]
-
-/-- The client's infinite executions are executions of `I`. -/
-theorem embed_execution (c : Config P R V (ClientState S)) (σ : ℕ → P) (k : ℕ) :
-    embed (I.singleShot.execution c σ k) = I.execution (embed c) (I.infActions c σ) k := by
-  induction k with
-  | zero => rfl
-  | succ k ih =>
-    rw [Algorithm.execution_succ, execution_succ, embed_step, ih]
-    rfl
-
-/-- In particular, from an initial configuration of the client. -/
-theorem execution_infActions (input : P → Bool) (σ : ℕ → P) (k : ℕ) :
-    I.execution I.initial (I.infActions (I.singleShot.initial input) σ) k =
-      embed (I.singleShot.execution (I.singleShot.initial input) σ k) := by
-  rw [embed_execution, embed_initial]
-
-/-- The events that client steps contribute to the history of `I`. -/
-theorem event_of_pending (c : Config P R V (ClientState S)) (p : P) {o : Bool}
-    (h : (c.proc p).state.1.pending = some o) :
-    I.event (embed c) (actionOf p (c.proc p).state) =
-      (I.stepResult (embed c) p o).2.2.map (.res p) := by
-  simp [actionOf, event, h]
-
-theorem event_of_fresh (c : Config P R V (ClientState S)) (p : P)
-    (h : (c.proc p).state.1.pending = none) (h0 : (c.proc p).state.1.done = 0) :
-    I.event (embed c) (actionOf p (c.proc p).state) = some (.inv p (c.proc p).state.2) := by
-  simp [actionOf, event, h, h0]
-
-theorem event_of_returned (c : Config P R V (ClientState S)) (p : P)
-    (h : (c.proc p).state.1.pending = none) (h0 : (c.proc p).state.1.done ≠ 0) :
-    I.event (embed c) (actionOf p (c.proc p).state) = none := by
-  simp [actionOf, event, h, h0]
-
-/-! ## The invariants -/
+/-! ## The client invariant -/
 
 theorem clientInv_initial (input : P → Bool) : ClientInv input (I.singleShot.initial input) := by
   intro p
@@ -211,10 +169,10 @@ theorem clientInv_step {input : P → Bool} {c : Config P R V (ClientState S)}
   · subst hpq
     obtain ⟨hin, hph⟩ := h p
     rcases hph with ⟨hp, h0, hd⟩ | ⟨hp, h0, hd⟩ | ⟨hp, h1, hd⟩
-    · rw [step_of_fresh c p hp h0]
+    · rw [step_of_fresh c p hp h0 hd]
       simp [hin, hd]
     · obtain ⟨s, hs⟩ := I.stepResult_after (embed c) p (input p)
-      rw [step_of_pending c p hp]
+      rw [step_of_pending c p hp hd]
       simp only [update_self, hs, embed_proc]
       cases (I.stepResult (embed c) p (input p)).2.2 <;>
         simp [ProcState.after, hin, h0, hd]
@@ -241,6 +199,78 @@ theorem clientInv_initial_execution (input : P → Bool) (σ : ℕ → P) (k : �
     ClientInv input (I.singleShot.execution (I.singleShot.initial input) σ k) :=
   clientInv_execution (clientInv_initial input) σ k
 
+/-- Under the client invariant, a process whose operation has not returned has not decided. -/
+theorem decision_of_done {input : P → Bool} {c : Config P R V (ClientState S)}
+    (hc : ClientInv input c) {p : P} (h0 : (c.proc p).state.1.done = 0) :
+    (c.proc p).decision = none := by
+  rcases (hc p).2 with ⟨-, -, hd⟩ | ⟨-, -, hd⟩ | ⟨-, h1, -⟩
+  · exact hd
+  · exact hd
+  · omega
+
+/-- Under the client invariant, a process with a pending operation has not decided. -/
+theorem decision_of_pending {input : P → Bool} {c : Config P R V (ClientState S)}
+    (hc : ClientInv input c) {p : P} {o : Bool} (h : (c.proc p).state.1.pending = some o) :
+    (c.proc p).decision = none := by
+  rcases (hc p).2 with ⟨hp, -, -⟩ | ⟨-, -, hd⟩ | ⟨hp, -, -⟩
+  · simp [hp] at h
+  · exact hd
+  · simp [hp] at h
+
+/-! ## The simulation -/
+
+/-- **The simulation.** Each step of the client performs one action of `I`, from the
+corresponding configuration. -/
+theorem embed_step {input : P → Bool} {c : Config P R V (ClientState S)}
+    (hc : ClientInv input c) (p : P) :
+    embed (I.singleShot.step c p) = I.act (embed c) (actionOf p (c.proc p).state) := by
+  cases hp : (c.proc p).state.1.pending with
+  | some o =>
+    rw [step_of_pending c p hp (decision_of_pending hc hp), embed_update]
+    simp [actionOf, act, hp]
+  | none =>
+    by_cases h0 : (c.proc p).state.1.done = 0
+    · rw [step_of_fresh c p hp h0 (decision_of_done hc h0), embed_update]
+      simp [actionOf, act, hp, h0]
+    · rw [step_of_returned c p hp h0]
+      simp [actionOf, act, hp, h0]
+
+/-- The client's infinite executions are executions of `I`. -/
+theorem embed_execution {input : P → Bool} {c : Config P R V (ClientState S)}
+    (hc : ClientInv input c) (σ : ℕ → P) (k : ℕ) :
+    embed (I.singleShot.execution c σ k) = I.execution (embed c) (I.infActions c σ) k := by
+  induction k with
+  | zero => rfl
+  | succ k ih =>
+    rw [Algorithm.execution_succ, execution_succ, embed_step (clientInv_execution hc σ k), ih]
+    rfl
+
+/-- In particular, from an initial configuration of the client. -/
+theorem execution_infActions (input : P → Bool) (σ : ℕ → P) (k : ℕ) :
+    I.execution I.initial (I.infActions (I.singleShot.initial input) σ) k =
+      embed (I.singleShot.execution (I.singleShot.initial input) σ k) := by
+  rw [embed_execution (clientInv_initial input), embed_initial]
+
+/-- The events that client steps contribute to the history of `I`. -/
+theorem event_of_pending (c : Config P R V (ClientState S)) (p : P) {o : Bool}
+    (h : (c.proc p).state.1.pending = some o) :
+    I.event (embed c) (actionOf p (c.proc p).state) =
+      (I.stepResult (embed c) p o).2.2.map (.res p) := by
+  simp [actionOf, event, h]
+
+theorem event_of_fresh (c : Config P R V (ClientState S)) (p : P)
+    (h : (c.proc p).state.1.pending = none) (h0 : (c.proc p).state.1.done = 0) :
+    I.event (embed c) (actionOf p (c.proc p).state) = some (.inv p (c.proc p).state.2) := by
+  simp [actionOf, event, h, h0]
+
+theorem event_of_returned (c : Config P R V (ClientState S)) (p : P)
+    (h : (c.proc p).state.1.pending = none) (h0 : (c.proc p).state.1.done ≠ 0) :
+    I.event (embed c) (actionOf p (c.proc p).state) = none := by
+  simp [actionOf, event, h, h0]
+
+/-! ## The history invariant -/
+
+
 /-- The history invariant survives a step of the client, together with the event it records. -/
 theorem historyInv_step {input : P → Bool}
     {c : Config P R V (ClientState S)} {H : History P Bool Bool}
@@ -252,7 +282,7 @@ theorem historyInv_step {input : P → Bool}
   obtain ⟨hin, hph⟩ := hc q
   rcases hph with ⟨hp, h0, hd⟩ | ⟨hp, h0, hd⟩ | ⟨hp, h1, hd⟩
   · -- `q` invokes: a new instance, and nobody else changes.
-    rw [event_of_fresh c q hp h0, step_of_fresh c q hp h0, hin]
+    rw [event_of_fresh c q hp h0, step_of_fresh c q hp h0 (decision_of_done hc h0), hin]
     have hnot : ∀ a ∈ H, a.proc ≠ q := by
       intro a ha hpa
       have hinv := (hrec a ha).2.2
@@ -275,7 +305,7 @@ theorem historyInv_step {input : P → Bool}
       · obtain ⟨a, ha, hpa⟩ := hex p (by simpa [update_of_ne hpq] using hpi)
         exact ⟨a, Or.inl ha, hpa⟩
   · -- `q` takes a step of its operation, which may return.
-    rw [event_of_pending c q hp, step_of_pending c q hp]
+    rw [event_of_pending c q hp, step_of_pending c q hp (decision_of_pending hc hp)]
     obtain ⟨s, hs⟩ := I.stepResult_after (embed c) q (input q)
     rw [embed_proc] at hs
     cases hr : (I.stepResult (embed c) q (input q)).2.2 with
@@ -334,7 +364,7 @@ theorem historyInv_run {input : P → Bool} :
   | [], _, _, _, _, hH => hH
   | q :: qs, c, H, t, hc, hH => by
     simp only [Algorithm.run_cons, actions, recordRun]
-    rw [← embed_step]
+    rw [← embed_step hc]
     exact historyInv_run qs _ _ _ (clientInv_step hc q) (historyInv_step hc hH q t)
 
 /-- Once invoked, a client process stays invoked. -/
@@ -346,7 +376,7 @@ theorem invoked_step {input : P → Bool} {c : Config P R V (ClientState S)}
     rcases (hc p).2 with ⟨hp, h0, -⟩ | ⟨hp, -, -⟩ | ⟨hp, h1, -⟩
     · simp [Invoked, hp, h0] at h
     · obtain ⟨s, hs⟩ := I.stepResult_after (embed c) p (input p)
-      rw [step_of_pending c p hp]
+      rw [step_of_pending c p hp (decision_of_pending hc hp)]
       simp only [update_self, hs]
       cases (I.stepResult (embed c) p (input p)).2.2 <;> simp [ProcState.after, Invoked]
     · rw [step_of_returned c p hp (by omega)]

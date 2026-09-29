@@ -10,7 +10,8 @@ termination only constrains executions, and the proof of Lemma 5 needs processes
 decide.
 
 Processes `0, 1, 2`; registers `r := false` and `s := true`, both initially `0`. Initial states
-`norm b` decide their own input at the first step, so COF termination holds in every execution.
+`norm b` decide their own input at the first step, so in every execution each process takes at
+most one step, and COF termination holds.
 The configuration `c₀` uses states that no execution reaches:
 
 * `p₁` in state `A` reads `s`: on `0` it goes to `A0`, which writes `r := 1` and then spins; on `1`
@@ -18,7 +19,7 @@ The configuration `c₀` uses states that no execution reaches:
 * `p₂` in state `B` reads `r`: on `0` it goes to `B0`, which writes `s := 1` and then spins; on `1`
   it goes to `B1`, which decides `0`.
 
-From `c₀ = (A, B)`, the schedule `p₁, p₁, p₂, p₂` decides `0` and `p₂, p₂, p₁, p₁` decides `1`. But
+From `c₀ = (A, B)`, the steps `p₁, p₁, p₂, p₂` decide `0` and `p₂, p₂, p₁, p₁` decide `1`. But
 once `p₁` has read, `1` can no longer be decided, and once `p₂` has read, `0` cannot.
 -/
 
@@ -43,15 +44,16 @@ def alg : Algorithm (Fin 3) Bool Bool St where
   initialState _ b := .norm b
   instruction _ s := instr s
 
-/-- The scheduled process's new local state. -/
-theorem step_self (d : Config (Fin 3) Bool Bool St) (p : Fin 3) :
+/-- The new local state of a process that has not decided, after its step. -/
+theorem step_self (d : Config (Fin 3) Bool Bool St) {p : Fin 3} (hd : (d.proc p).decision = none) :
     (alg.step d p).proc p =
       match instr (d.proc p).state with
-      | .read r next =>
-        ⟨(next (d.memory r)).state, (d.proc p).decision.or (next (d.memory r)).decision⟩
-      | .write _ _ next => ⟨next.state, (d.proc p).decision.or next.decision⟩ := by
+      | .read r next => next (d.memory r)
+      | .write _ _ next => next := by
   unfold Algorithm.step
   dsimp only [alg]
+  rw [hd]
+  dsimp only
   split <;> simp_all
 
 /-! ## COF termination holds: every process of an execution is in a `norm` state -/
@@ -64,7 +66,9 @@ theorem normInv_step {d : Config (Fin 3) Bool Bool St} (hd : NormInv d) (p : Fin
   by_cases hq : q = p
   · subst hq
     obtain ⟨b, hb⟩ := hd q
-    exact ⟨b, by rw [step_self, hb]; rfl⟩
+    cases hdq : (d.proc q).decision with
+    | some v => rw [alg.step_of_decided hdq]; exact ⟨b, hb⟩
+    | none => exact ⟨b, by rw [step_self _ hdq, hb]; rfl⟩
   · rw [alg.step_local_other d hq]; exact hd q
 
 theorem normInv_execution {d : Config (Fin 3) Bool Bool St} (hd : NormInv d) (σ : ℕ → Fin 3) :
@@ -73,12 +77,12 @@ theorem normInv_execution {d : Config (Fin 3) Bool Bool St} (hd : NormInv d) (σ
   | k + 1 => normInv_step (normInv_execution hd σ k) (σ k)
 
 theorem alg_cofTermination : alg.COFTermination := by
-  intro input σ _ p hinf
+  intro input σ hadm _ p hinf
   obtain ⟨k, -, hk⟩ := hinf 0
   obtain ⟨b, hb⟩ := normInv_execution (d := alg.initial input) (fun q => ⟨input q, rfl⟩) σ k p
-  refine ⟨k + 1, ?_⟩
-  rw [execution_succ, hk, step_self, hb]
-  cases ((alg.execution _ σ k).proc p).decision <;> simp [instr]
+  refine hadm.finite_of_decided (n := k + 1) (v := b) ?_ hinf
+  rw [execution_succ, hk, step_self _ (hk ▸ hadm k), hb]
+  rfl
 
 /-! ## The unreachable bivalent configuration -/
 
@@ -118,44 +122,44 @@ theorem ne21 : (2 : Fin 3) ≠ 1 := by decide
 theorem ne01 : (0 : Fin 3) ≠ 1 := by decide
 theorem ne02 : (0 : Fin 3) ≠ 2 := by decide
 
-theorem or_ne {o n : Option Bool} {v : Bool} (ho : o ≠ some v) (hn : n ≠ some v) :
-    o.or n ≠ some v := by
-  cases o with
-  | none => simpa using hn
-  | some w => simpa using ho
-
 theorem inv1_step {d : Config (Fin 3) Bool Bool St} (hd : Inv1 d) {p : Fin 3}
     (hp : p = 1 ∨ p = 2) : Inv1 (alg.step d p) := by
+  cases hdp : (d.proc p).decision with
+  | some v => rw [alg.step_of_decided hdp]; exact hd
+  | none =>
   obtain ⟨h0, h1, h2, h2d⟩ := hd
   rcases hp with rfl | rfl
   · refine ⟨by rw [alg.step_local_other d ne01]; exact h0, ?_, ?_, ?_⟩
-    · rw [step_self]
+    · rw [step_self _ hdp]
       rcases h1 with h1 | h1 <;> rw [h1] <;> simp [instr]
     · rw [alg.step_local_other d ne21]; exact h2
     · rw [alg.step_local_other d ne21]; exact h2d
   · refine ⟨by rw [alg.step_local_other d ne02]; exact h0,
       by rw [alg.step_local_other d ne12]; exact h1, ?_, ?_⟩
-    · rw [step_self]
+    · rw [step_self _ hdp]
       rcases h2 with h | h | h | h <;> rw [h] <;> simp only [instr] <;>
         (try split) <;> simp
-    · rw [step_self]
+    · rw [step_self _ hdp]
       rcases h2 with h | h | h | h <;> rw [h] <;> simp only [instr] <;>
-        (try split) <;> exact or_ne h2d (by simp)
+        (try split) <;> simp
 
 theorem inv2_step {d : Config (Fin 3) Bool Bool St} (hd : Inv2 d) {p : Fin 3}
     (hp : p = 1 ∨ p = 2) : Inv2 (alg.step d p) := by
+  cases hdp : (d.proc p).decision with
+  | some v => rw [alg.step_of_decided hdp]; exact hd
+  | none =>
   obtain ⟨h0, h2, h1, h1d⟩ := hd
   rcases hp with rfl | rfl
   · refine ⟨by rw [alg.step_local_other d ne01]; exact h0,
       by rw [alg.step_local_other d ne21]; exact h2, ?_, ?_⟩
-    · rw [step_self]
+    · rw [step_self _ hdp]
       rcases h1 with h | h | h | h <;> rw [h] <;> simp only [instr] <;>
         (try split) <;> simp
-    · rw [step_self]
+    · rw [step_self _ hdp]
       rcases h1 with h | h | h | h <;> rw [h] <;> simp only [instr] <;>
-        (try split) <;> exact or_ne h1d (by simp)
+        (try split) <;> simp
   · refine ⟨by rw [alg.step_local_other d ne02]; exact h0, ?_, ?_, ?_⟩
-    · rw [step_self]
+    · rw [step_self _ hdp]
       rcases h2 with h2 | h2 <;> rw [h2] <;> simp [instr]
     · rw [alg.step_local_other d ne12]; exact h1
     · rw [alg.step_local_other d ne12]; exact h1d
@@ -172,7 +176,7 @@ theorem inv_run {Inv : Config (Fin 3) Bool Bool St → Prop}
 theorem succ1_valent : alg.Valent {1, 2} (alg.step c₀ 1) false := by
   have hstart : Inv1 (alg.step c₀ 1) := by
     refine ⟨by rw [alg.step_local_other c₀ ne01]; rfl, ?_, ?_, ?_⟩
-    · left; rw [step_self]; simp [c₀, instr]
+    · left; rw [step_self _ rfl]; simp [c₀, instr]
     · left; rw [alg.step_local_other c₀ ne21]; rfl
     · rw [alg.step_local_other c₀ ne21]; simp [c₀]
   rintro ⟨d, ⟨ps, hps, rfl⟩, q, hq⟩
@@ -185,7 +189,7 @@ theorem succ1_valent : alg.Valent {1, 2} (alg.step c₀ 1) false := by
 theorem succ2_valent : alg.Valent {1, 2} (alg.step c₀ 2) true := by
   have hstart : Inv2 (alg.step c₀ 2) := by
     refine ⟨by rw [alg.step_local_other c₀ ne02]; rfl, ?_, ?_, ?_⟩
-    · left; rw [step_self]; simp [c₀, instr]
+    · left; rw [step_self _ rfl]; simp [c₀, instr]
     · left; rw [alg.step_local_other c₀ ne12]; rfl
     · rw [alg.step_local_other c₀ ne12]; simp [c₀]
   rintro ⟨d, ⟨ps, hps, rfl⟩, q, hq⟩

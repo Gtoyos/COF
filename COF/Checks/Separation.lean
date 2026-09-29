@@ -15,8 +15,8 @@ alternately writes `X := b` and reads `X`, and decides `b` when it reads back `b
 
 * If eventually only processes with input `v` take steps, `X` eventually holds `v` for good, and
   every such process decides the next time it reads (`alg_cofTermination`).
-* Under strict alternation with inputs `(0,1)`, process `0` always reads `1` back, and never
-  decides (`alg_not_wfTermination`).
+* With inputs `(0,1)` and the steps `0, 1, 0, 0, 1, 1, 0, 0, …`, each process always reads back
+  the other's value, and nobody ever decides (`alg_not_wfTermination`).
 
 The algorithm violates Agreement; it is only meant to compare the two liveness conditions.
 -/
@@ -33,22 +33,26 @@ def alg : Algorithm (Fin 2) Unit (Option Bool) (Bool × Bool) where
       .read () fun x => if x = some s.1 then ⟨(s.1, false), some s.1⟩ else ⟨(s.1, false), none⟩
     else .write () (some s.1) ⟨(s.1, true), none⟩
 
-theorem step_self (d : Config (Fin 2) Unit (Option Bool) (Bool × Bool)) (p : Fin 2) :
+theorem step_self (d : Config (Fin 2) Unit (Option Bool) (Bool × Bool)) {p : Fin 2}
+    (hd : (d.proc p).decision = none) :
     (alg.step d p).proc p =
       if (d.proc p).state.2 then
-        ⟨((d.proc p).state.1, false), (d.proc p).decision.or
-          (if d.memory () = some (d.proc p).state.1 then some (d.proc p).state.1 else none)⟩
-      else ⟨((d.proc p).state.1, true), (d.proc p).decision⟩ := by
+        ⟨((d.proc p).state.1, false),
+          if d.memory () = some (d.proc p).state.1 then some (d.proc p).state.1 else none⟩
+      else ⟨((d.proc p).state.1, true), none⟩ := by
   unfold Algorithm.step
   dsimp only [alg]
+  rw [hd]
   by_cases h : (d.proc p).state.2 <;> simp [h]
   split <;> simp_all
 
-theorem step_memory (d : Config (Fin 2) Unit (Option Bool) (Bool × Bool)) (p : Fin 2) :
+theorem step_memory (d : Config (Fin 2) Unit (Option Bool) (Bool × Bool)) {p : Fin 2}
+    (hd : (d.proc p).decision = none) :
     (alg.step d p).memory () =
       if (d.proc p).state.2 then d.memory () else some (d.proc p).state.1 := by
   unfold Algorithm.step
   dsimp only [alg]
+  rw [hd]
   by_cases h : (d.proc p).state.2 <;> simp [h, Function.update]
 
 /-! ## COF termination holds -/
@@ -61,14 +65,18 @@ theorem input_kept (input : Fin 2 → Bool) (σ : ℕ → Fin 2) :
     rw [execution_succ]
     by_cases hq : q = σ n
     · subst hq
-      rw [step_self]
-      split <;> exact input_kept input σ n _
+      cases hd : ((alg.execution (alg.initial input) σ n).proc (σ n)).decision with
+      | some v => rw [alg.step_of_decided hd]; exact input_kept input σ n _
+      | none =>
+        rw [step_self _ hd]
+        split <;> exact input_kept input σ n _
     · rw [alg.step_local_other _ hq]
       exact input_kept input σ n q
 
 /-- Once a process with input `v` writes after `N`, the register holds `v` for as long as only
 processes with input `v` take steps. -/
 theorem register_stays (input : Fin 2 → Bool) {σ : ℕ → Fin 2} {N : ℕ} {v : Bool}
+    (hadm : alg.Admissible (alg.initial input) σ)
     (hN : ∀ k ≥ N, input (σ k) = v) {w : ℕ} (hw : N ≤ w)
     (hmw : (alg.execution (alg.initial input) σ (w + 1)).memory () = some v) :
     ∀ t, w + 1 ≤ t → (alg.execution (alg.initial input) σ t).memory () = some v := by
@@ -76,26 +84,28 @@ theorem register_stays (input : Fin 2 → Bool) {σ : ℕ → Fin 2} {N : ℕ} {
   induction t, ht using Nat.le_induction with
   | base => exact hmw
   | succ t ht ih =>
-    rw [execution_succ, step_memory]
+    rw [execution_succ, step_memory _ (hadm t)]
     split
     · exact ih
     · rw [input_kept input σ t (σ t), hN t (by omega)]
 
-/-- The next time at or after `t` that `p` is scheduled; `p`'s state is still what it was at
+/-- The next time at or after `t` that `p` takes a step; `p`'s state is still what it was at
 `t`. -/
-theorem next_scheduled (input : Fin 2 → Bool) (σ : ℕ → Fin 2) {p : Fin 2}
+theorem next_step (input : Fin 2 → Bool) (σ : ℕ → Fin 2) {p : Fin 2}
     (hinf : ∀ N, ∃ k ≥ N, σ k = p) (t : ℕ) :
     ∃ k, t ≤ k ∧ σ k = p ∧
       (alg.execution (alg.initial input) σ k).proc p =
         (alg.execution (alg.initial input) σ t).proc p := by
   have h : ∃ k, t ≤ k ∧ σ k = p := hinf t
   exact ⟨Nat.find h, (Nat.find_spec h).1, (Nat.find_spec h).2,
-    alg.execution_proc_of_unscheduled_between _ σ (Nat.find_spec h).1
+    alg.execution_proc_of_no_steps_between _ σ (Nat.find_spec h).1
       fun m h₁ h₂ h₃ => Nat.find_min h h₂ ⟨h₁, h₃⟩⟩
 
 theorem alg_cofTermination : alg.COFTermination := by
-  intro input σ ⟨N, v, hN⟩ p hinf
+  intro input σ hadm ⟨N, v, hN⟩ p hinf
   have hin := input_kept input σ
+  have hd : ∀ k, σ k = p → ((alg.execution (alg.initial input) σ k).proc p).decision = none :=
+    fun k hk => hk ▸ hadm k
   have hpv : input p = v := by
     obtain ⟨k, hk, hkp⟩ := hinf N
     rw [← hkp]
@@ -103,78 +113,98 @@ theorem alg_cofTermination : alg.COFTermination := by
   -- Some step of `p` at a time `w ≥ N` is a write.
   obtain ⟨w, hwN, hwp, hwphase⟩ : ∃ w, N ≤ w ∧ σ w = p ∧
       ((alg.execution (alg.initial input) σ w).proc p).state.2 = false := by
-    obtain ⟨k₁, hk₁, hk₁p, -⟩ := next_scheduled input σ hinf N
+    obtain ⟨k₁, hk₁, hk₁p, -⟩ := next_step input σ hinf N
     by_cases hph : ((alg.execution (alg.initial input) σ k₁).proc p).state.2
     · -- `p` reads at `k₁`, so its next step writes.
-      obtain ⟨k₂, hk₂, hk₂p, hst⟩ := next_scheduled input σ hinf (k₁ + 1)
+      obtain ⟨k₂, hk₂, hk₂p, hst⟩ := next_step input σ hinf (k₁ + 1)
       refine ⟨k₂, by omega, hk₂p, ?_⟩
-      rw [hst, execution_succ, hk₁p, step_self]
+      rw [hst, execution_succ, hk₁p, step_self _ (hd k₁ hk₁p)]
       simp [hph]
     · exact ⟨k₁, hk₁, hk₁p, by simpa using hph⟩
   -- From then on, the register holds `v`.
   have hmw : (alg.execution (alg.initial input) σ (w + 1)).memory () = some v := by
-    rw [execution_succ, hwp, step_memory, hwphase, hin w p, hpv]
+    rw [execution_succ, hwp, step_memory _ (hd w hwp), hwphase, hin w p, hpv]
     rfl
-  have hmem := register_stays input hN hwN hmw
+  have hmem := register_stays input hadm hN hwN hmw
   -- The next step of `p` reads `v` back, and `p` decides.
-  obtain ⟨r, hr, hrp, hst⟩ := next_scheduled input σ hinf (w + 1)
+  obtain ⟨r, hr, hrp, hst⟩ := next_step input σ hinf (w + 1)
   have hphase : ((alg.execution (alg.initial input) σ r).proc p).state.2 = true := by
-    rw [hst, execution_succ, hwp, step_self]
+    rw [hst, execution_succ, hwp, step_self _ (hd w hwp)]
     simp [hwphase]
-  refine ⟨r + 1, ?_⟩
-  rw [execution_succ, hrp, step_self, hphase, hmem r hr, hin r p, hpv]
-  cases ((alg.execution (alg.initial input) σ r).proc p).decision <;> simp
+  refine hadm.finite_of_decided (n := r + 1) (v := v) ?_ hinf
+  rw [execution_succ, hrp, step_self _ (hd r hrp), hphase, hmem r hr, hin r p, hpv]
+  simp
 
 /-! ## WF termination fails -/
 
 /-- Process `0` proposes `0` and process `1` proposes `1`. -/
 def inputs : Fin 2 → Bool := fun p => decide (p = 1)
 
-/-- Strict alternation: `0, 1, 0, 1, …`. -/
-def alternation : ℕ → Fin 2 := fun t => if t % 2 = 0 then 0 else 1
+/-- The steps `0, 1`, then `0, 0, 1, 1` over and over. -/
+def interleaving : ℕ → Fin 2 := fun t => if t = 0 ∨ t % 4 = 2 ∨ t % 4 = 3 then 0 else 1
 
-/-- The configuration at time `t` of the alternating execution, by phase `t % 4`: `0` writes `0`,
-`1` writes `1`, `0` reads `1` (and does not decide), `1` reads `1`. Process `0` never decides. -/
+/-- The configuration after `t ≥ 1` steps of `interleaving`, by phase `t % 4`. Nobody has decided,
+both processes keep their inputs, and the next step is: `1` writes `1` (phase `1`); `0` reads `1`
+(phase `2`); `0` writes `0` (phase `3`); `1` reads `0` (phase `0`). -/
 def Phase (d : Config (Fin 2) Unit (Option Bool) (Bool × Bool)) (ph : ℕ) : Prop :=
-  (d.proc 0).decision = none ∧ (d.proc 1).state.1 = true ∧ (d.proc 0).state.1 = false ∧
+  (d.proc 0).decision = none ∧ (d.proc 1).decision = none ∧
+  (d.proc 0).state.1 = false ∧ (d.proc 1).state.1 = true ∧
   match ph with
-  | 0 => (d.proc 0).state.2 = false ∧ (d.proc 1).state.2 = false
-  | 1 => (d.proc 0).state.2 = true ∧ (d.proc 1).state.2 = false
+  | 0 => (d.proc 0).state.2 = true ∧ (d.proc 1).state.2 = true ∧ d.memory () = some false
+  | 1 => (d.proc 0).state.2 = true ∧ (d.proc 1).state.2 = false ∧ d.memory () = some false
   | 2 => (d.proc 0).state.2 = true ∧ (d.proc 1).state.2 = true ∧ d.memory () = some true
   | _ => (d.proc 0).state.2 = false ∧ (d.proc 1).state.2 = true ∧ d.memory () = some true
 
-theorem alternation_phase :
-    ∀ t, Phase (alg.execution (alg.initial inputs) alternation t) (t % 4) := by
+theorem interleaving_phase :
+    ∀ t, Phase (alg.execution (alg.initial inputs) interleaving (t + 1)) ((t + 1) % 4) := by
   intro t
   induction t with
-  | zero => exact ⟨rfl, rfl, rfl, rfl, rfl⟩
+  | zero =>
+    -- process `0` writes `0`
+    simp [Phase, execution, interleaving, Algorithm.step, Algorithm.initial, alg, inputs,
+      Function.update]
   | succ t ih =>
-    obtain ⟨hd0, hs1, hs0, hph⟩ := ih
+    obtain ⟨hd0, hd1, hs0, hs1, hph⟩ := ih
     rw [execution_succ]
-    have h4 : t % 4 = 0 ∨ t % 4 = 1 ∨ t % 4 = 2 ∨ t % 4 = 3 := by omega
+    have h4 : (t + 1) % 4 = 0 ∨ (t + 1) % 4 = 1 ∨ (t + 1) % 4 = 2 ∨ (t + 1) % 4 = 3 := by omega
     rcases h4 with h | h | h | h <;> rw [h] at hph
-    · -- phase 0: process `0` writes `0`
-      obtain ⟨hp0, hp1⟩ := hph
-      rw [show alternation t = 0 by simp [alternation]; omega, show (t + 1) % 4 = 1 by omega]
-      simp [Phase, step_self, hp0, hp1, hd0, hs0, hs1]
+    · -- phase 0: process `1` reads `0`, and does not decide
+      obtain ⟨hp0, hp1, hm⟩ := hph
+      rw [show interleaving (t + 1) = 1 by simp [interleaving]; omega,
+        show (t + 1 + 1) % 4 = 1 by omega]
+      simp [Phase, step_self _ hd1, step_memory _ hd1, hp0, hp1, hm, hd0, hs0, hs1]
     · -- phase 1: process `1` writes `1`
-      obtain ⟨hp0, hp1⟩ := hph
-      rw [show alternation t = 1 by simp [alternation]; omega, show (t + 1) % 4 = 2 by omega]
-      simp [Phase, step_self, step_memory, hp0, hp1, hd0, hs0, hs1]
+      obtain ⟨hp0, hp1, -⟩ := hph
+      rw [show interleaving (t + 1) = 1 by simp [interleaving]; omega,
+        show (t + 1 + 1) % 4 = 2 by omega]
+      simp [Phase, step_self _ hd1, step_memory _ hd1, hp0, hp1, hd0, hs0, hs1]
     · -- phase 2: process `0` reads `1`, and does not decide
       obtain ⟨hp0, hp1, hm⟩ := hph
-      rw [show alternation t = 0 by simp [alternation]; omega, show (t + 1) % 4 = 3 by omega]
-      simp [Phase, step_self, step_memory, hp0, hp1, hm, hd0, hs0, hs1]
-    · -- phase 3: process `1` reads `1` (and decides); process `0` is untouched
+      rw [show interleaving (t + 1) = 0 by simp [interleaving]; omega,
+        show (t + 1 + 1) % 4 = 3 by omega]
+      simp [Phase, step_self _ hd0, step_memory _ hd0, hp0, hp1, hm, hd1, hs0, hs1]
+    · -- phase 3: process `0` writes `0`
       obtain ⟨hp0, hp1, -⟩ := hph
-      rw [show alternation t = 1 by simp [alternation]; omega, show (t + 1) % 4 = 0 by omega]
-      simp [Phase, step_self, hp0, hp1, hd0, hs0, hs1]
+      rw [show interleaving (t + 1) = 0 by simp [interleaving]; omega,
+        show (t + 1 + 1) % 4 = 0 by omega]
+      simp [Phase, step_self _ hd0, step_memory _ hd0, hp0, hp1, hd1, hs0, hs1]
 
+/-- Nobody ever decides, so every entry of `interleaving` is a step. -/
+theorem interleaving_admissible : alg.Admissible (alg.initial inputs) interleaving := by
+  intro t
+  cases t with
+  | zero => rfl
+  | succ t =>
+    obtain ⟨hd0, hd1, -⟩ := interleaving_phase t
+    by_cases h : interleaving (t + 1) = 0
+    · rw [h]; exact hd0
+    · rw [show interleaving (t + 1) = 1 by omega]; exact hd1
+
+/-- Process `0` takes infinitely many steps, and never decides. -/
 theorem alg_not_wfTermination : ¬ alg.WFTermination := by
   intro h
-  obtain ⟨n, v, hv⟩ := h inputs alternation 0 (fun N => ⟨2 * N, by omega, by simp [alternation]⟩)
-  rw [(alternation_phase n).1] at hv
-  cases hv
+  exact h inputs interleaving interleaving_admissible 0
+    (fun N => ⟨4 * N + 2, by omega, by simp [interleaving]⟩)
 
 /-- **COF termination is strictly weaker than WF termination.** -/
 theorem cofTermination_strictly_weaker :

@@ -44,10 +44,12 @@ invocations are distinct instances.
   input-independent, and a process's initial state depends only on its own input.
 - **Step** (`step`): one shared-memory event. A read receives the value read. A write receives
   nothing, which is what makes the registers read/write, and what the proof uses
-  (`commutation_or_erasure`).
-- **Schedule** (`run`, `execution`): an arbitrary list or sequence of processes, with no fairness.
-  A crash is a process never scheduled again, and any number may crash. Decisions are irrevocable,
-  and steps after a decision belong to no pending operation.
+  (`commutation_or_erasure`). A process that has decided has completed its operation and takes no
+  further steps (`step_of_decided`), so decisions are irrevocable.
+- **Execution** (`run`, `execution`): the processes taking the steps, in order, as a list or a
+  sequence, with no fairness. A process that stops taking steps before deciding has crashed, and
+  any number may crash. An entry naming a decided process is not a step and changes nothing. In an
+  `Admissible` execution, every entry is a step.
 - `Reach active c d` is `c ⇝π d` for `π` over `active`, and `Reachable input c` says `c` occurs in
   an execution. `Indist` is indistinguishability: same memory and same local state for each
   observer.
@@ -59,14 +61,13 @@ Process, register, value and local-state types may be infinite, and need no deci
 `COF/Consensus/Specification.lean`:
 
 - `Validity` and `Agreement` hold in every reachable configuration.
-- `COFTermination`: if from some point every scheduled process proposed the same value, every
-  process scheduled infinitely often decides.
+- `COFTermination`: in every admissible execution, if from some point only processes that proposed
+  the same value take steps, no process takes infinitely many steps.
 - `COFConsensus`: all three.
 
-A decided process may still be scheduled, so "takes steps" has two readings. `COFTermination`
-counts every scheduled step. `StrictCOFTermination` counts only steps of pending operations, the
-paper's notion, and implies `COFTermination` (`StrictCOFTermination.cofTermination`). Theorem 6
-refutes the weaker `COFTermination`, so it covers both (`theorem6_strict`).
+That conclusion is the paper's "every correct process decides in finitely many steps": a decided
+process takes no further steps, one that stops before deciding has crashed, and a correct process
+that has not decided keeps taking steps.
 
 `WFTermination` implies `COFTermination`, and `COF/Checks/Separation.lean` shows the converse fails.
 
@@ -88,8 +89,9 @@ where a proof needs a single valency, `solo_terminates` supplies an actual decis
   Equal valencies of the two successors pass to the configuration, and different ones contradict
   the critical square.
 - **Theorem 6** (`no_cof_consensus`): iterating Lemma 5 gives an infinite execution through
-  bivalent configurations in which only `p₁` and `p₂`, who proposed the same value, step. One of
-  them decides by COF termination, contradicting Agreement in a bivalent configuration.
+  bivalent configurations in which only `p₁` and `p₂`, who proposed the same value, step. By
+  Agreement nobody has decided in a bivalent configuration, so every entry is a step, and one of
+  `p₁` and `p₂` takes infinitely many steps, which COF termination forbids.
 
 ## Implementations and linearizability
 
@@ -98,8 +100,9 @@ Lemmas 1 and 2 and Corollary 7.
 
 - An `Implementation` is one deterministic automaton per process: an initial state, a way to absorb
   an invocation, and a next step (a read or a write, possibly followed by a response).
-- The environment invokes operations on idle processes and schedules processes arbitrarily
-  (`Action`, `act`). Invoking a busy process or scheduling an idle one does nothing.
+- The environment invokes operations on idle processes, and processes with a pending operation take
+  steps in any order (`Action`, `act`). Invoking a busy process does nothing, and an idle process
+  takes no steps.
 - The history of a finite execution is a list of intervals (`OpRecord`). `IsLinearization` is Herlihy
   and Wing's condition: it contains every completed instance with its actual response, may include
   a pending one with a chosen response, is legal for the object, and respects real-time order.
@@ -126,8 +129,7 @@ Each makes the Lean statement at least as strong.
 2. **Fewer hypotheses in Lemmas 3 to 5.** Lemma 3 assumes Validity, Lemma 4 Validity and COF
    termination, Lemma 5 COF termination. They also hold for any input vector and any three distinct
    processes.
-3. **Weaker COF termination.** Theorem 6 refutes `COFTermination`, not the strict reading.
-4. **Weaker universal construction.** The paper's is one algorithm taking the specification as
+3. **Weaker universal construction.** The paper's is one algorithm taking the specification as
    input. `COFUniversal` asks only that each object have some implementation, whose types may depend
    on the object.
 
@@ -146,9 +148,8 @@ The paper (§4.1) cites Attiya, Guerraoui, Hendler and Kuznetsov (*The complexit
 implementations*, JACM 56(4), 2009) for COF consensus among two processes. That is not formalized.
 `COF/Consensus/Tightness.lean` states it as the proposition `TwoProcessCOFConsensus`, not an axiom.
 `cofConsensusImplementable_fin_iff` takes it as an argument and concludes that COF consensus for `n`
-processes is implementable exactly when `n ≤ 2`. It uses the weaker `COFTermination`, so it asks no
-more than the paper claims (`cofConsensusImplementable_of_strict`), and
-`twoProcessCOFConsensus_iff_threshold` shows it is exactly the unproved part of the threshold.
+processes is implementable exactly when `n ≤ 2`, and `twoProcessCOFConsensus_iff_threshold` shows
+it is exactly the unproved part of the threshold.
 
 ## Checks
 

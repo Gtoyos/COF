@@ -266,7 +266,7 @@ theorem seqInv_act {c : ImplConfig Unit Unit Unit (Q × Option O) O} {H : Histor
       ∀ r t', a.returned = some (r, t') → a.invokedAt < t' ∧ t' < t + 1 := fun a ha =>
     ⟨by have := (htime a ha).1; omega, fun r t' hr => by
       have := (htime a ha).2 r t' hr; omega⟩
-  -- Actions that change nothing: invoking a busy process, or scheduling an idle one.
+  -- Actions that change nothing: invoking a busy process, or `.step` of an idle one.
   have hsame : ∀ a', (seqImpl obj).act c a' = c → (seqImpl obj).event c a' = none →
       SeqInv obj ((seqImpl obj).act c a') (H.record t ((seqImpl obj).event c a')) (t + 1) := by
     intro a' hc he

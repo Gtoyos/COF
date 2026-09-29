@@ -17,12 +17,11 @@ import COF.SharedMemory.Algorithm
 `COFConsensus` is their conjunction. The processes' inputs are their proposals. `WFTermination`
 is wait-free termination, which implies COF termination (`WFTermination.cofTermination`).
 
-The phrase "take steps" admits two readings, because a process that has decided may still be
-scheduled. `COFTermination` counts all scheduled steps. `StrictCOFTermination` counts only steps
-of pending operations, as the paper's §2 does ("Φ takes a step … when the process p that invoked
-Φ takes a step and Φ has not yet returned a response"). The strict reading demands termination in
-more executions and implies the other (`StrictCOFTermination.cofTermination`), so the
-impossibility theorem, which assumes `COFTermination`, covers both.
+The termination properties are about infinite executions, in which every entry is a step
+(`Admissible`). A process that has decided takes no further steps. A process that stops taking
+steps before deciding has crashed, and a correct process that has not decided keeps taking steps.
+So "every correct process decides in finitely many steps" says that no process takes infinitely
+many steps.
 -/
 
 namespace COF.SharedMemory
@@ -50,16 +49,12 @@ def Agreement : Prop :=
   ∀ input c, a.Reachable input c → ∀ v w, c.Decided v → c.Decided w → v = w
 
 /-- **COF termination**, for the executions from every initial configuration: if from some point
-on every scheduled process proposed the same value `v`, then every process that is scheduled
-infinitely often decides.
-
-A process scheduled infinitely often is correct. A correct process scheduled only finitely often
-has no pending operation, so it has already decided. -/
+on only processes that proposed the same value `v` take steps, then every correct process decides
+in finitely many steps, that is, no process takes infinitely many steps. -/
 def COFTermination : Prop :=
-  ∀ (input : P → Bool) (σ : ℕ → P),
+  ∀ (input : P → Bool) (σ : ℕ → P), a.Admissible (a.initial input) σ →
     (∃ N v, ∀ k ≥ N, input (σ k) = v) →
-    ∀ p, (∀ N, ∃ k ≥ N, σ k = p) →
-      ∃ n v, ((a.execution (a.initial input) σ n).proc p).decision = some v
+    ∀ p, ¬ ∀ N, ∃ k ≥ N, σ k = p
 
 /-- A **conflict-obstruction-free consensus** algorithm: Validity, Agreement and COF
 termination. -/
@@ -68,14 +63,16 @@ def COFConsensus : Prop :=
 
 /-! ## COF termination from reachable configurations -/
 
-/-- COF termination also holds for executions from any reachable configuration: the finite
-schedule that reached it can be prepended without affecting either premise. So quantifying over
-reachable starting points, as the proofs do, asks for nothing more. -/
+/-- COF termination also holds for executions from any reachable configuration: an admissible run
+that reaches it (`exists_runAdmissible`) can be prepended without affecting either premise. So
+quantifying over reachable starting points, as the proofs do, asks for nothing more. -/
 theorem COFTermination.from_reachable {a : Algorithm P R V S} (h : a.COFTermination)
-    {input : P → Bool} {c : Config P R V S} (hr : a.Reachable input c) (σ : ℕ → P)
-    (hhom : ∃ N v, ∀ k ≥ N, input (σ k) = v) (p : P) (hinf : ∀ N, ∃ k ≥ N, σ k = p) :
-    ∃ n v, ((a.execution c σ n).proc p).decision = some v := by
-  obtain ⟨ps, _, rfl⟩ := hr
+    {input : P → Bool} {c : Config P R V S} (hr : a.Reachable input c) {σ : ℕ → P}
+    (hadm : a.Admissible c σ) (hhom : ∃ N v, ∀ k ≥ N, input (σ k) = v) (p : P) :
+    ¬ ∀ N, ∃ k ≥ N, σ k = p := by
+  obtain ⟨ps', _, rfl⟩ := hr
+  obtain ⟨ps, -, hps, hrun⟩ := a.exists_runAdmissible (a.initial input) ps'
+  rw [← hrun] at hadm
   obtain ⟨N, b, hN⟩ := hhom
   -- The execution from the initial configuration that first runs `ps`, then `σ`.
   have hhom' : ∃ N b, ∀ k ≥ N, input (prepend ps σ k) = b := by
@@ -83,45 +80,35 @@ theorem COFTermination.from_reachable {a : Algorithm P R V S} (h : a.COFTerminat
     obtain ⟨j, rfl⟩ := Nat.exists_eq_add_of_le (show ps.length ≤ k by omega)
     rw [prepend_add]
     exact hN j (by omega)
-  have hinf' : ∀ M, ∃ k ≥ M, prepend ps σ k = p := by
-    intro M
-    obtain ⟨k, hk, he⟩ := hinf M
-    exact ⟨ps.length + k, by omega, by simpa using he⟩
-  obtain ⟨n, v, hd⟩ := h input _ hhom' p hinf'
-  have hd' := a.execution_decision (show n ≤ ps.length + n by omega) hd
-  exact ⟨n, v, by simpa [a.execution_prepend] using hd'⟩
+  intro hinf
+  refine h input _ (a.admissible_prepend hps hadm) hhom' p fun M => ?_
+  obtain ⟨k, hk, he⟩ := hinf M
+  exact ⟨ps.length + k, by omega, by simpa using he⟩
+
+/-- From a reachable configuration, if from some point on `σ` names only processes that proposed
+the same value, and names `p` infinitely often, then not all of its entries are steps: at some
+time, the process it names has already decided. This is how the proofs use COF termination. -/
+theorem COFTermination.exists_decided {a : Algorithm P R V S} (h : a.COFTermination)
+    {input : P → Bool} {c : Config P R V S} (hr : a.Reachable input c) (σ : ℕ → P)
+    (hhom : ∃ N v, ∀ k ≥ N, input (σ k) = v) {p : P} (hinf : ∀ N, ∃ k ≥ N, σ k = p) :
+    ∃ n, ((a.execution c σ n).proc (σ n)).decision ≠ none := by
+  by_contra hne
+  push Not at hne
+  exact h.from_reachable hr hne hhom p hinf
 
 /-! ## Related liveness conditions -/
 
-/-- **WF termination**: every process that is scheduled infinitely often decides, whatever the
-schedule. -/
+/-- **WF termination**: every correct process decides in finitely many steps, whoever takes
+steps, that is, no process takes infinitely many steps. -/
 def WFTermination : Prop :=
-  ∀ (input : P → Bool) (σ : ℕ → P) (p : P), (∀ N, ∃ k ≥ N, σ k = p) →
-    ∃ n v, ((a.execution (a.initial input) σ n).proc p).decision = some v
+  ∀ (input : P → Bool) (σ : ℕ → P), a.Admissible (a.initial input) σ →
+    ∀ p, ¬ ∀ N, ∃ k ≥ N, σ k = p
 
 /-- COF termination is "weaker" than WF termination: it is implied by it. It is also strictly
 weaker, as `COF/Checks/Separation.lean` shows. -/
 theorem WFTermination.cofTermination {a : Algorithm P R V S} (h : a.WFTermination) :
     a.COFTermination :=
-  fun input σ _ p hinf => h input σ p hinf
-
-/-- `p` takes a step of its operation at time `k` of the execution from `initial input` under `σ`:
-it is scheduled, and it has not decided yet. -/
-def TakesOperationStep (input : P → Bool) (σ : ℕ → P) (k : ℕ) (p : P) : Prop :=
-  σ k = p ∧ ((a.execution (a.initial input) σ k).proc p).decision = none
-
-/-- **COF termination, strict reading**: as `COFTermination`, but a scheduled process that has
-already decided takes no step of an operation, so it does not count in the premise. -/
-def StrictCOFTermination : Prop :=
-  ∀ (input : P → Bool) (σ : ℕ → P),
-    (∃ N v, ∀ k ≥ N, ∀ p, a.TakesOperationStep input σ k p → input p = v) →
-    ∀ p, (∀ N, ∃ k ≥ N, σ k = p) →
-      ∃ n v, ((a.execution (a.initial input) σ n).proc p).decision = some v
-
-/-- The strict reading demands termination in more executions, so it implies `COFTermination`. -/
-theorem StrictCOFTermination.cofTermination {a : Algorithm P R V S}
-    (h : a.StrictCOFTermination) : a.COFTermination :=
-  fun input σ ⟨N, v, hN⟩ => h input σ ⟨N, v, fun k hk _ ⟨hp, _⟩ => hp ▸ hN k hk⟩
+  fun input σ hadm _ => h input σ hadm
 
 end Algorithm
 end COF.SharedMemory

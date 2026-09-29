@@ -69,13 +69,13 @@ def Linearizes (obj : Object Q Bool Bool) : Prop :=
     ∃ ps : List P, ps.Nodup ∧ ∀ p v, (c.proc p).decision = some v →
       (p, v) ∈ obj.responses input obj.initial ps
 
-/-- COF termination with conflicts judged by `obj`: if `p` is scheduled infinitely often, and
-from some point on every other scheduled process proposed an operation that does not conflict
-with `p`'s, then `p` decides. -/
+/-- COF termination with conflicts judged by `obj`: if from some point on every process other
+than `p` that takes a step proposed an operation that does not conflict with `p`'s, then `p`
+decides in finitely many steps or crashes, that is, `p` does not take infinitely many steps. -/
 def COFTerminationFor (obj : Object Q Bool Bool) : Prop :=
-  ∀ (input : P → Bool) (σ : ℕ → P) (p : P), (∀ N, ∃ k ≥ N, σ k = p) →
+  ∀ (input : P → Bool) (σ : ℕ → P), a.Admissible (a.initial input) σ → ∀ p,
     (∃ N, ∀ k ≥ N, σ k ≠ p → ¬ obj.Conflict (input p) (input (σ k))) →
-    ∃ n v, ((a.execution (a.initial input) σ n).proc p).decision = some v
+    ¬ ∀ N, ∃ k ≥ N, σ k = p
 
 /-! ## For the consensus object -/
 
@@ -105,14 +105,15 @@ theorem agreement_of_linearizes (h : a.Linearizes consensusObject) : a.Agreement
     obtain ⟨q, hq⟩ := a.decisions_of_linearizes h hr hv
     exact (hq v hv).trans (hq w hw).symm
 
-/-- For consensus, `COFTerminationFor` is COF termination: proposals conflict exactly when they
-differ, so a homogeneous schedule is conflict-free for every process in it. -/
+/-- For consensus, `COFTerminationFor` implies COF termination: proposals conflict exactly when
+they differ, so if eventually only processes that proposed the same value take steps, none of
+them meets a conflicting proposal. -/
 theorem cofTermination_of_cofTerminationFor (h : a.COFTerminationFor consensusObject) :
     a.COFTermination := by
-  intro input σ ⟨N, b, hN⟩ p hinf
+  intro input σ hadm ⟨N, b, hN⟩ p hinf
   obtain ⟨k, hk, he⟩ := hinf N
   have hp : input p = b := by simpa [he] using hN k hk
-  refine h input σ p hinf ⟨N, fun j hj _ => ?_⟩
+  refine h input σ hadm p ⟨N, fun j hj _ => ?_⟩ hinf
   rw [consensus_conflict_iff, hp, hN j hj]
   exact not_not.mpr rfl
 
@@ -175,8 +176,8 @@ theorem linearizes_singleShot {obj : Object Q Bool Bool} (h : I.Linearizable obj
 
 /-! ## COF transfers -/
 
-/-- In the trace of `I`, a client step belongs to the scheduled process's pending proposal, if
-any. -/
+/-- In the trace of `I`, a client step belongs to the pending proposal of the process taking it,
+if any. -/
 theorem trace_step_infActions (input : P → Bool) (σ : ℕ → P) (k : ℕ) :
     (I.trace (I.infActions (I.singleShot.initial input) σ)).step k =
       ((I.singleShot.execution (I.singleShot.initial input) σ k).proc (σ k)).state.1.pending.map
@@ -192,12 +193,12 @@ theorem trace_step_infActions (input : P → Bool) (σ : ℕ → P) (k : ℕ) :
         (σ k)).state.1.done = 0 <;>
       simp [infActions, actionOf, hp, h0]
 
-/-- The first time a client process is scheduled, it invokes its proposal: its first operation
+/-- The first time `σ` names a client process, it invokes its proposal: its first operation
 instance, `(p, 0, input p)`. -/
 theorem trace_invoked_infActions (input : P → Bool) (σ : ℕ → P) {p : P} {t : ℕ}
     (ht : σ t = p) (hfirst : ∀ m < t, σ m ≠ p) :
     (I.trace (I.infActions (I.singleShot.initial input) σ)).invoked (p, 0, input p) := by
-  have hfresh := I.singleShot.execution_proc_of_unscheduled (I.singleShot.initial input) σ hfirst
+  have hfresh := I.singleShot.execution_proc_of_no_steps (I.singleShot.initial input) σ hfirst
   refine ⟨t, ?_, ?_, ?_⟩
   · simp only [infActions]
     rw [ht, hfresh]
@@ -207,7 +208,7 @@ theorem trace_invoked_infActions (input : P → Bool) (σ : ℕ → P) {p : P} {
   · rw [execution_infActions, embed_proc, hfresh]
     rfl
 
-/-- After its first scheduling, a client process stays invoked. -/
+/-- Once it has invoked its proposal, a client process stays invoked. -/
 theorem invoked_after (input : P → Bool) (σ : ℕ → P) {p : P} {t : ℕ}
     (ht : σ t = p) (hfirst : ∀ m < t, σ m ≠ p) :
     ∀ m, t < m →
@@ -216,16 +217,17 @@ theorem invoked_after (input : P → Bool) (σ : ℕ → P) {p : P} {t : ℕ}
   induction m, hm using Nat.le_induction with
   | base =>
     have hfresh :=
-      I.singleShot.execution_proc_of_unscheduled (I.singleShot.initial input) σ hfirst
+      I.singleShot.execution_proc_of_no_steps (I.singleShot.initial input) σ hfirst
     rw [Algorithm.execution_succ, ht, step_of_fresh _ p
       (by rw [hfresh]; simp [Algorithm.initial, singleShot])
-      (by rw [hfresh]; simp [Algorithm.initial, singleShot])]
+      (by rw [hfresh]; simp [Algorithm.initial, singleShot])
+      (by rw [hfresh]; simp [Algorithm.initial])]
     simp [Invoked]
   | succ m _ ih =>
     exact invoked_step (I.clientInv_initial_execution input σ m) ih (σ m)
 
-/-- A client process scheduled infinitely often is correct: it keeps taking steps while it has not
-decided, and is idle for good once it has. -/
+/-- A client process that `σ` names infinitely often is correct in the trace of `I`: it keeps
+taking steps while it has not decided, and is idle for good once it has. -/
 theorem trace_correct_infActions (input : P → Bool) (σ : ℕ → P) {p : P} {t : ℕ}
     (ht : σ t = p) (hfirst : ∀ m < t, σ m ≠ p) (hinf : ∀ N, ∃ k ≥ N, σ k = p) :
     (I.trace (I.infActions (I.singleShot.initial input) σ)).correct (p, 0, input p) := by
@@ -272,14 +274,14 @@ theorem trace_conflictFree_infActions (input : P → Bool) (σ : ℕ → P)
     rw [h0, hq]
   · simp [hp] at ho
 
-/-- **COF transfers to the client.** A client process scheduled infinitely often invokes its
+/-- **COF transfers to the client.** A client process that takes infinitely many steps invokes its
 proposal at its first step, and is correct. If eventually no process with a conflicting proposal
 steps, the proposal is eventually conflict-free, so COF of `I` makes it return: the process
-decides. -/
+decides, and takes no further steps. -/
 theorem cofTerminationFor_singleShot {obj : Object Q Bool Bool}
     (h : I.ConflictObstructionFree obj.Conflict) : I.singleShot.COFTerminationFor obj := by
   classical
-  intro input σ p hinf ⟨N, hN⟩
+  intro input σ hadm p ⟨N, hN⟩ hinf
   have hsched : ∃ t, σ t = p := by
     obtain ⟨k, -, hk⟩ := hinf 0
     exact ⟨k, hk⟩
@@ -297,7 +299,7 @@ theorem cofTerminationFor_singleShot {obj : Object Q Bool Bool}
   · omega
   · omega
   · obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp hd
-    exact ⟨t, v, hv⟩
+    exact hadm.finite_of_decided hv hinf
 
 end SharedMemory.Implementation
 end COF

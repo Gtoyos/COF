@@ -157,13 +157,6 @@ info: COF.Paper.theorem6_of_three.{u_1, u_2, u_3, u_4} {P : Type u_1} {R : Type 
 #check COF.Paper.theorem6_of_three
 
 /--
-info: COF.Paper.theorem6_strict.{u_1, u_2, u_3} {n : ℕ} (hn : 3 ≤ n) {R : Type u_1} {V : Type u_2} {S : Type u_3}
-  (a : COF.SharedMemory.Algorithm (Fin n) R V S) : ¬(a.Validity ∧ a.Agreement ∧ a.StrictCOFTermination)
--/
-#guard_msgs in
-#check COF.Paper.theorem6_strict
-
-/--
 info: COF.Paper.corollary7.{u_1, u_2, u_3} {n : ℕ} (hn : 3 ≤ n) : ¬COF.COFUniversal (Fin n)
 -/
 #guard_msgs in
@@ -319,13 +312,14 @@ info: def COF.SharedMemory.Algorithm.step.{u_1, u_2, u_3, u_4} : {P : Type u_1} 
       {S : Type u_4} →
         COF.SharedMemory.Algorithm P R V S → COF.SharedMemory.Config P R V S → P → COF.SharedMemory.Config P R V S :=
 fun {P} {R} {V} {S} a c p ↦
-  have old := c.proc p;
-  have finish := fun memory next ↦
-    { memory := memory,
-      proc := Function.update c.proc p { state := next.state, decision := old.decision.or next.decision } };
-  match a.instruction p old.state with
-  | COF.SharedMemory.Instruction.read r next => finish c.memory (next (c.memory r))
-  | COF.SharedMemory.Instruction.write r v next => finish (Function.update c.memory r v) next
+  match (c.proc p).decision with
+  | some val => c
+  | none =>
+    match a.instruction p (c.proc p).state with
+    | COF.SharedMemory.Instruction.read r next =>
+      { memory := c.memory, proc := Function.update c.proc p (next (c.memory r)) }
+    | COF.SharedMemory.Instruction.write r v next =>
+      { memory := Function.update c.memory r v, proc := Function.update c.proc p next }
 -/
 #guard_msgs in
 #print COF.SharedMemory.Algorithm.step
@@ -381,37 +375,25 @@ fun {P} {R} {V} {S} a ↦
 #print COF.SharedMemory.Algorithm.Agreement
 
 /--
+info: def COF.SharedMemory.Algorithm.Admissible.{u_1, u_2, u_3, u_4} : {P : Type u_1} →
+  {R : Type u_2} →
+    {V : Type u_3} →
+      {S : Type u_4} → COF.SharedMemory.Algorithm P R V S → COF.SharedMemory.Config P R V S → (ℕ → P) → Prop :=
+fun {P} {R} {V} {S} a c σ ↦ ∀ (k : ℕ), ((a.execution c σ k).proc (σ k)).decision = none
+-/
+#guard_msgs in
+#print COF.SharedMemory.Algorithm.Admissible
+
+/--
 info: def COF.SharedMemory.Algorithm.COFTermination.{u_1, u_2, u_3, u_4} : {P : Type u_1} →
   {R : Type u_2} → {V : Type u_3} → {S : Type u_4} → COF.SharedMemory.Algorithm P R V S → Prop :=
 fun {P} {R} {V} {S} a ↦
   ∀ (input : P → Bool) (σ : ℕ → P),
-    (∃ N v, ∀ (k : ℕ), k ≥ N → input (σ k) = v) →
-      ∀ (p : P),
-        (∀ (N : ℕ), ∃ k, k ≥ N ∧ σ k = p) → ∃ n v, ((a.execution (a.initial input) σ n).proc p).decision = some v
+    a.Admissible (a.initial input) σ →
+      (∃ N v, ∀ (k : ℕ), k ≥ N → input (σ k) = v) → ∀ (p : P), ¬∀ (N : ℕ), ∃ k, k ≥ N ∧ σ k = p
 -/
 #guard_msgs in
 #print COF.SharedMemory.Algorithm.COFTermination
-
-/--
-info: def COF.SharedMemory.Algorithm.TakesOperationStep.{u_1, u_2, u_3, u_4} : {P : Type u_1} →
-  {R : Type u_2} →
-    {V : Type u_3} → {S : Type u_4} → COF.SharedMemory.Algorithm P R V S → (P → Bool) → (ℕ → P) → ℕ → P → Prop :=
-fun {P} {R} {V} {S} a input σ k p ↦ σ k = p ∧ ((a.execution (a.initial input) σ k).proc p).decision = none
--/
-#guard_msgs in
-#print COF.SharedMemory.Algorithm.TakesOperationStep
-
-/--
-info: def COF.SharedMemory.Algorithm.StrictCOFTermination.{u_1, u_2, u_3, u_4} : {P : Type u_1} →
-  {R : Type u_2} → {V : Type u_3} → {S : Type u_4} → COF.SharedMemory.Algorithm P R V S → Prop :=
-fun {P} {R} {V} {S} a ↦
-  ∀ (input : P → Bool) (σ : ℕ → P),
-    (∃ N v, ∀ (k : ℕ), k ≥ N → ∀ (p : P), a.TakesOperationStep input σ k p → input p = v) →
-      ∀ (p : P),
-        (∀ (N : ℕ), ∃ k, k ≥ N ∧ σ k = p) → ∃ n v, ((a.execution (a.initial input) σ n).proc p).decision = some v
--/
-#guard_msgs in
-#print COF.SharedMemory.Algorithm.StrictCOFTermination
 
 /--
 info: def COF.SharedMemory.Algorithm.COFConsensus.{u_1, u_2, u_3, u_4} : {P : Type u_1} →

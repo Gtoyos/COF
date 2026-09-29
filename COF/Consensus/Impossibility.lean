@@ -32,9 +32,9 @@ theorem infinitely_often_of_two (σ : ℕ → P) (p q : P) (hs : ∀ n, σ n = p
 /-- No reachable configuration is bivalent for two processes that proposed the same value.
 
 Iterating Lemma 5 gives an infinite execution through bivalent configurations, in which only
-`p₁` and `p₂` take steps. Its schedule is homogeneous, and one of the two processes is scheduled
-infinitely often, so COF termination makes that process decide. But nobody has decided in a
-bivalent configuration (`bivalent_not_decided`, by Agreement). -/
+`p₁` and `p₂` take steps. Nobody has decided in a bivalent configuration (`bivalent_not_decided`,
+by Agreement), so every entry of the execution is a step. `p₁` and `p₂` proposed the same value,
+so COF termination forbids either of them to take infinitely many steps. But one of them does. -/
 theorem not_bivalent (hag : a.Agreement) (ht : a.COFTermination) {input : P → Bool}
     {p₁ p₂ : P} (h₁₂ : p₁ ≠ p₂) (hin : input p₁ = input p₂)
     {c : Config P R V S} (hr : a.Reachable input c) : ¬ a.Bivalent {p₁, p₂} c := by
@@ -62,14 +62,19 @@ theorem not_bivalent (hag : a.Agreement) (ht : a.COFTermination) {input : P → 
     rcases hpick (states k) with h | h
     · exact (congrArg input h).trans hin
     · exact congrArg input h
-  -- One of them is scheduled infinitely often, so it must decide.
-  obtain ⟨t, htinf⟩ : ∃ t, ∀ N, ∃ k ≥ N, σ k = t := by
-    rcases infinitely_often_of_two σ p₁ p₂ (fun n => hpick (states n)) with h | h
-    · exact ⟨p₁, h⟩
-    · exact ⟨p₂, h⟩
-  obtain ⟨n, v, hd⟩ := ht.from_reachable hr σ hhom t htinf
-  rw [hexec] at hd
-  exact a.bivalent_not_decided hag (states n).property.1 (states n).property.2 v ⟨t, hd⟩
+  -- Nobody decides, so every entry is a step.
+  have hadm : a.Admissible c σ := by
+    intro n
+    rw [hexec]
+    cases hd : ((states n).val.proc (σ n)).decision with
+    | none => rfl
+    | some v =>
+      exact (a.bivalent_not_decided hag (states n).property.1 (states n).property.2 v
+        ⟨σ n, hd⟩).elim
+  -- One of them takes infinitely many steps.
+  rcases infinitely_often_of_two σ p₁ p₂ (fun n => hpick (states n)) with h | h
+  · exact ht.from_reachable hr hadm hhom p₁ h
+  · exact ht.from_reachable hr hadm hhom p₂ h
 
 /-- **Theorem 6**: no algorithm satisfies Validity, Agreement and COF termination, as soon as
 there are three distinct processes. Nothing is assumed about the other processes, if any: they

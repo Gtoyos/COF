@@ -15,10 +15,10 @@ invocations: the setting of Lemmas 1 and 2 and of Corollary 7.
 > high-level operation.
 
 The environment invokes operations on idle processes, at arbitrary times (`Action.invoke`). A
-process with a pending operation takes steps when scheduled (`Action.step`), until one returns a
-response. Invoking a busy process, or scheduling an idle one, does nothing. Executions are
-arbitrary sequences of actions from the initial configuration: there is no fairness, and a process
-that is never scheduled again has crashed.
+process with a pending operation takes steps (`Action.step`), until one returns a response.
+Invoking a busy process does nothing, and an idle process takes no steps: `Action.step` changes
+nothing for it. Executions are arbitrary sequences of actions from the initial configuration: there
+is no fairness, and a process that stops taking steps with an operation pending has crashed.
 
 An implementation is `Linearizable` when every finite execution has a linearizable history, and
 `ConflictObstructionFree`, `ObstructionFree` or `WaitFree` when the traces of all its infinite
@@ -81,7 +81,7 @@ structure ImplConfig (P R V S O : Type*) where
   /-- Each process's state. -/
   proc : P → ProcState S O
 
-/-- What the environment does next: invoke an operation on a process, or schedule a process. -/
+/-- What happens next: an operation is invoked on a process, or a process takes a step. -/
 inductive Action (P O : Type*) where
   | invoke (p : P) (o : O)
   | step (p : P)
@@ -111,8 +111,8 @@ theorem stepResult_after (c : ImplConfig P R V S O) (p : P) (o : O) :
   cases I.instruction p (c.proc p).state <;> exact ⟨_, rfl⟩
 
 open scoped Classical in
-/-- The effect of an action. Invoking a busy process, or scheduling an idle one, does nothing:
-processes are sequential, and take steps only while executing an operation. -/
+/-- The effect of an action. Invoking a busy process does nothing, and neither does `.step` for an
+idle process: processes are sequential, and take steps only while executing an operation. -/
 noncomputable def act (c : ImplConfig P R V S O) : Action P O → ImplConfig P R V S O
   | .invoke p o =>
     match (c.proc p).pending with
@@ -196,8 +196,8 @@ noncomputable def execution (I : Implementation P R V S O Resp) (c : ImplConfig 
 theorem execution_succ (c : ImplConfig P R V S O) (α : ℕ → Action P O) (n : ℕ) :
     I.execution c α (n + 1) = I.act (I.execution c α n) (α n) := rfl
 
-/-- `p` takes a step at time `k` of the execution `α`: it is scheduled while it has a pending
-operation. -/
+/-- `p` takes a step at time `k` of the execution `α`: the action is `.step p`, and `p` has a
+pending operation. -/
 def StepsAt (α : ℕ → Action P O) (k : ℕ) (p : P) : Prop :=
   α k = .step p ∧ ((I.execution I.initial α k).proc p).pending.isSome
 
@@ -207,8 +207,8 @@ instance `(p, k, o)` is the `k`-th invocation by `p`, of operation `o`.
 * It is *invoked* if `o` is invoked on `p` while `p` is idle with `k` returned operations.
 * It *completes* once `p` has more than `k` returned operations.
 * Its process is *correct* if it takes infinitely many steps or is eventually idle forever.
-* A step belongs to the pending instance of the scheduled process. Scheduling an idle process,
-  or invoking an operation, is a step of no instance. -/
+* A step belongs to the pending instance of the process taking it. A `.step` action of an idle
+  process, or an invocation, is a step of no instance. -/
 noncomputable def trace (α : ℕ → Action P O) : Trace (P × ℕ × O) O where
   operation i := i.2.2
   invoked i := ∃ t, α t = .invoke i.1 i.2.2 ∧

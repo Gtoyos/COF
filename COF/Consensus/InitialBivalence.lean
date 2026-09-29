@@ -91,7 +91,7 @@ theorem step_preserves_valency (ht : a.COFTermination) {input : P → Bool}
     a.no_critical_step ht hq hr hpq hrp hrq hall hc ⟨hv, hflip⟩
 
 /-- **Lemma 4**: for any three distinct processes, some configuration reachable from
-`initial (zeroAt p₀)` is bivalent for `{p₁,p₂}`. Other processes, if any, are never scheduled.
+`initial (zeroAt p₀)` is bivalent for `{p₁,p₂}`. Other processes, if any, never take a step.
 
 Suppose not. Then `initial (zeroAt p₀)` is `1`-valent (Lemma 3), and `p₀` running solo decides,
 necessarily `0`. Every step of that run preserves `1`-valency (`step_preserves_valency`, with `p₁`

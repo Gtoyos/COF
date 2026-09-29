@@ -30,6 +30,17 @@ theorem commutation_or_erasure (c : Config P R V S) {p q : P} (hne : p ≠ q) :
     Indist {r | r ≠ p} (a.step (a.step c p) q) (a.step c q) ∨
     Indist {r | r ≠ q} (a.step (a.step c q) p) (a.step c p) := by
   have hqp := hne.symm
+  -- A process that has decided takes no step, so its entry commutes with anything.
+  cases hdp : (c.proc p).decision with
+  | some v =>
+    left
+    rw [a.step_of_decided hdp, a.step_of_decided (c := a.step c q) (by simpa [hne] using hdp)]
+  | none =>
+  cases hdq : (c.proc q).decision with
+  | some v =>
+    left
+    rw [a.step_of_decided hdq, a.step_of_decided (c := a.step c p) (by simpa [hqp] using hdq)]
+  | none =>
   cases hp : a.instruction p (c.proc p).state with
   | read rp kp =>
     cases hq : a.instruction q (c.proc q).state with
@@ -37,7 +48,7 @@ theorem commutation_or_erasure (c : Config P R V S) {p q : P} (hne : p ≠ q) :
       -- Two reads: neither touches memory, and each updates only its own local state.
       left
       apply Config.ext
-      · simp [step, hp, hq, hne, hqp]
+      · simp [step, hdp, hdq, hp, hq, hne, hqp]
       · funext r
         by_cases hrp : r = p <;> by_cases hrq : r = q <;>
           simp_all [step, Function.update]
@@ -46,7 +57,7 @@ theorem commutation_or_erasure (c : Config P R V S) {p q : P} (hne : p ≠ q) :
       -- that it happened.
       right; left
       constructor
-      · simp [step, hp, hq, hqp]
+      · simp [step, hdp, hdq, hp, hq, hqp]
       · intro r hr
         simp only [Set.mem_ofPred_eq] at hr
         by_cases hrq : r = q <;> simp_all [step, Function.update]
@@ -56,7 +67,7 @@ theorem commutation_or_erasure (c : Config P R V S) {p q : P} (hne : p ≠ q) :
       -- `p` writes, `q` reads: symmetric to the previous case, with `q`'s read erased.
       right; right
       constructor
-      · simp [step, hp, hq, hne]
+      · simp [step, hdp, hdq, hp, hq, hne]
       · intro r hr
         simp only [Set.mem_ofPred_eq] at hr
         by_cases hrp : r = p <;> simp_all [step, Function.update]
@@ -68,7 +79,7 @@ theorem commutation_or_erasure (c : Config P R V S) {p q : P} (hne : p ≠ q) :
         subst rq
         right; left
         constructor
-        · simp [step, hp, hq, hqp]
+        · simp [step, hdp, hdq, hp, hq, hqp]
         · intro r hr
           simp only [Set.mem_ofPred_eq] at hr
           by_cases hrq : r = q <;> simp_all [step, Function.update]
